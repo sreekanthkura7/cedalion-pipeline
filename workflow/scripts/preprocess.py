@@ -55,7 +55,7 @@ import module_preprocess as preproc
 
 #%% Load in data for current subject/task/run
 
-def preprocess_func(snirf_path, events_path, root_dir, derivatives_subfolder, cfg_preprocess, stim_lst, mse_amp_thresh, out_files):
+def preprocess_func(snirf_path, events_path, root_dir, derivatives_subfolder, cfg_preprocess, stim_lst, out_files):
     cedalion.xrutils.unit_stripping_is_error(True)
     # Load in snirf file
     
@@ -238,13 +238,13 @@ def preprocess_func(snirf_path, events_path, root_dir, derivatives_subfolder, cf
     if not rec['od_corrected'].pint.units:
         rec['od_corrected'] = rec['od_corrected'].pint.quantify(units_od)  # make sure od has units 
         
-    if isinstance(mse_amp_thresh,str):
-        mse_amp_thresh = float(mse_amp_thresh)
+    min_amp_thresh = cfg_preprocess['steps']['prune']["amp_thresh_min"]
+    if isinstance(min_amp_thresh,str):
+        min_amp_thresh = float(min_amp_thresh)  
     idx_sat = np.where(chs_pruned == 0.92)[0]
     sat_ch_coords = chs_pruned.channel[idx_sat].values  # get channel coords
     amp = rec['amp'].mean('time').min('wavelength') # take the minimum across wavelengths
-    #idx_amp = np.where(amp < cfg_preprocess["steps"]["prune"]["amp_thresh"][0])[0]
-    idx_amp = np.where(amp < mse_amp_thresh)[0]   # COMES FROM GROUP AVG CFG
+    idx_amp = np.where(amp < min_amp_thresh)[0]   
     amp_ch_coords = chs_pruned.channel[idx_amp].values
 
     # Concat bad indices
@@ -296,16 +296,14 @@ def main():
     root_dir = snakemake.params.root_dir
     derivatives_subfolder = snakemake.params.derivatives_subfolder
     cfg_preprocess = snakemake.params.cfg_preprocess
-    stim_lst = snakemake.params.stim_lst
-    mse_amp_thresh = snakemake.params.mse_amp_thresh
-    
+    stim_lst = snakemake.params.stim_lst    
     
     out_files = {
         "out_snirf" : snakemake.output.snirf,
         "out_sidecar": snakemake.output.sidecar,
         }
     
-    preprocess_func(snirf_path, events_path, root_dir, derivatives_subfolder, cfg_preprocess, stim_lst, mse_amp_thresh, out_files)
+    preprocess_func(snirf_path, events_path, root_dir, derivatives_subfolder, cfg_preprocess, stim_lst, out_files)
  
     
 if __name__ == "__main__":

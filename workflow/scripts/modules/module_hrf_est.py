@@ -94,7 +94,7 @@ def GLM(runs, cfg_hrf_estimation, geo3d, pruned_chans_list):
     "dirac_delta": glm.DiracDelta, 
     }
     
-    basis_cls = BASIS_FUNCTIONS[cfg_GLM["basis_func"]] # bassis func class
+    basis_cls = BASIS_FUNCTIONS[cfg_GLM["basis_func"]] # basis func class
     if basis_cls is None:
         raise ValueError(f"Unsupported basis function: {cfg_GLM['basis_func']}")
     if cfg_GLM["basis_func_params"] is None:
@@ -104,7 +104,7 @@ def GLM(runs, cfg_hrf_estimation, geo3d, pruned_chans_list):
         t_pre = cfg_hrf_estimation['t_pre']
         t_post = cfg_hrf_estimation['t_post']
     basis_params = cfg_GLM["basis_func_params"] # basis func params
-    basis_func = basis_cls(t_pre=t_pre, t_post=t_post, **basis_params)  # instantiate basis function with params
+    basis_func = basis_cls(t_pre=t_pre, t_post=t_post, **basis_params)  # basis function with params
 
     # 2. define design matrix
     dms = glm.design_matrix.hrf_regressors(
@@ -143,7 +143,7 @@ def GLM(runs, cfg_hrf_estimation, geo3d, pruned_chans_list):
     bad_chans_mse_lst = []
 
     for trial_type in trial_type_list:
-        
+        print(trial_type)
         betas_hrf = betas.sel(regressor=betas.regressor.str.startswith(f"HRF {trial_type}"))
         hrf_estimate = estimate_HRF_from_beta(betas_hrf, basis_hrf)
         

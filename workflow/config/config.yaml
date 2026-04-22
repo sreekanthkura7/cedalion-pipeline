@@ -63,7 +63,6 @@ hrf_estimation:   #  !!! make these constants instead?
 
 groupaverage:
   mse:    # for changing bad values IDed in prune channels mask. change vals for conc or od
-   mse_amp_thresh: 1e-3 
    mse_val_for_bad_data: "1e7 micromolar**2"
    mse_min_thresh: "1e0 micromolar**2"
    hrf_val: "0 micromolar"
@@ -95,7 +94,6 @@ image_recon:   # need to create sensitivity matrix first. Not included here yet.
     sigma_scalp: "5 mm"
   noise_est_method: "posterior"   # posterior or measurement are options
   mse:    # od   - for changing bad values IDed in prune channels mask
-    mse_amp_thresh: 1e-3   #1.1e-6
     mse_val_for_bad_data: 1e1
     mse_min_thresh: 1e-6
     hrf_val: 0

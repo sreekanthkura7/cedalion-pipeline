@@ -10,15 +10,16 @@ Created on Fri Jun 13 06:12:33 2025
 import os
 import gzip
 import pickle
-import tkinter as tk
-from tkinter import filedialog
 import matplotlib.pyplot as plt
-
-# import cedalion
+import cedalion
 import xarray as xr
 from cedalion import io, nirs, units
-import cedalion.vis.plot_probe as vPlotProbe
+import cedalion.vis.misc.plot_probe_gui as vPlotProbe
 import cedalion.geometry.registration as registration
+from cedalion.dataclasses.geometry import PointType
+from cedalion.physunits import units
+import pint
+import pandas as pd
 
 
 #%%
@@ -26,23 +27,25 @@ import cedalion.geometry.registration as registration
 path2results = "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD/derivatives/cedalion/new"
 #path2results = "/projectnb/nphfnirs/s/users/shannon/Data/reg_test_data/ground_truth" #test_data/derivatives/cedalion"
 #path2results = "/projectnb/nphfnirs/s/users/shannon/Data/reg_test_data/test_data/derivatives/cedalion"
+path2results = "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD/derivatives/cedalion/final_ihope"
 
 task = "IWHD"
 
-filname = "task-" + task + "_nirs_groupaverage_chanspace_conc.pkl"
-filepath_bl = os.path.join(os.path.join(path2results, "groupaverage/") , filname)
+filname = "task-" + task + "_nirs_groupaverage_chanspace_conc.nc"
+filepath_bl = os.path.join(os.path.join(path2results, "group_results") , filname)
     
 
 
 if os.path.exists(filepath_bl):
-    with open(filepath_bl, 'rb') as f:
-        groupavg_results = pickle.load(f)
+    # with open(filepath_bl, 'rb') as f:
+    #     groupavg_results = pickle.load(f)
+    groupavg_results = xr.open_dataset(filepath_bl)
         
     groupaverage = groupavg_results['group_average_weighted']
     groupaverage_unweighted = groupavg_results['group_average']
     blockaverage_stderr = groupavg_results['total_stderr']
     tstat = groupavg_results['tstat']
-    #geo2d = groupavg_results['geo2d']
+    geo2d = groupavg_results['geo2d']
     geo3d = groupavg_results['geo3d']
     print("Group average file loaded successfully!")
 
@@ -50,8 +53,14 @@ else:
     raise ValueError(f"Error: File '{filepath_bl}' not found!")
     
 # groupaverage = groupaverage_unweighted_orig  # plot unweighted group averagegroupaverage_conc.sel(channel=ch_name)
-geo2d = registration.simple_scalp_projection(geo3d)
+# geo2d = registration.simple_scalp_projection(geo3d)
 
+geo2d = geo2d.pint.quantify().rename({'pos2d': 'pos'}) # re-cast type coord from string back to PointType enum 
+geo2d['type'] = xr.DataArray(pd.Series(geo2d['type'].values).map(lambda s: PointType[s.split('.')[-1]]).values,
+    dims=geo2d['type'].dims)
+geo3d = geo3d.pint.quantify().rename({'pos3d': 'pos'})
+geo3d['type'] = xr.DataArray(pd.Series(geo3d['type'].values).map(lambda s: PointType[s.split('.')[-1]]).values,
+    dims=geo3d['type'].dims)
 
 #%% Convert to conc if in OD
 
@@ -84,3 +93,5 @@ else:
 vPlotProbe.run_vis(blockaverage = groupaverage_conc, geo2d = geo2d, geo3d = geo3d)
 
 
+
+# %%

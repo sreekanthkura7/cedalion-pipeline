@@ -9,10 +9,11 @@ SNAKEFILE_DIR = Path(workflow.snakefile).parent
 # Use --configfile to specify config, or use default
 
 # default_config = join(SNAKEFILE_DIR, "config", "config.yaml")  # default config file in workflow/config folder
-
-default_config = "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/derivatives/cedalion/test_new_folder_config_struct/test_1/config_test_1.yml" # have snakemake copy this file into derivatives folder
+default_config = "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD/derivatives/cedalion/final_ihope/config_STS_Q.yaml"
+# default_config = "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/derivatives/cedalion/test_new_folder_config_struct/test_1/config_test_1.yml" # have snakemake copy this file into derivatives folder
 # default_config = "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD/derivatives/cedalion/new_inclQ_test_imgrecon_newnoise_2/config_STS_Q.yml" # have snakemake copy this file into derivatives folder
 # default_config = "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/derivatives/cedalion/test/test_1/config_test_1.yml" # have snakemake copy this file into derivatives folder
+# default_config = '/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/derivatives/cedalion/test_0421/test_1/config_test_1.yml'
 
 if not workflow.overwrite_configfiles:
     configfile: default_config
@@ -26,7 +27,7 @@ SAVE_DIR = join(ROOT, 'derivatives', 'cedalion', DERIV)
 
 # Get subject list from BIDS directory, excluding any subjects in the exclude list in config
 dirs = os.listdir(ROOT) 
-subject_list = [d.replace("sub-", "") for d in dirs if "sub" in d and d.replace("sub-", "") not in config["dataset"]["subjects_to_exclude"]]
+subject_list = [d.replace("sub-", "") for d in dirs if os.path.isdir(os.path.join(ROOT, d)) and "sub-" in d and d.replace("sub-", "") not in config["dataset"]["subjects_to_exclude"]]
 config["dataset"]["subject"] = subject_list
 config["dataset"]["run"] = [f"{i:02d}" for i in range(1, int(config["dataset"]["num_runs"]) + 1)]
 
@@ -90,8 +91,8 @@ rule all_groupavg_imagerecon:
 rule all_preprocess:
     input:
         expand([
-            (f"{SAVE_DIR}/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_preprocessed.nc"),  #  preprocessed_dataessed snirf
-            (f"{SAVE_DIR}/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_dataquality_geo.sidecar"), # data qual sidecar 
+            (f"{SAVE_DIR}/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_preprocessed.snirf"),  #  preprocessed_dataessed snirf
+            (f"{SAVE_DIR}/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_dataquality.nc"), # data qual sidecar 
             ],
             subject = config["dataset"]["subject"],
             task = config["dataset"]["task"],
@@ -138,7 +139,6 @@ rule preprocess:
         root_dir = ROOT,
         derivatives_subfolder = config['dataset']['derivatives_subfolder'],
         stim_lst = config['hrf_estimation']['stim_lst'],
-        mse_amp_thresh = config['groupaverage']['mse']['mse_amp_thresh']
     script:
         SNAKEFILE_DIR / "scripts/preprocess.py"
 
@@ -214,7 +214,7 @@ rule generate_sensitivity:
     resources:
         gpu=1
     params:
-        cfg_dataset = config['dataset']["root_dir"],
+        root_dir = config['dataset']["root_dir"],
         head_model = config['image_recon']['generate_sensitivity']['head_model'],
         cfg_Adot = config['image_recon']['generate_sensitivity']
     script:

@@ -46,7 +46,6 @@ def groupaverage_func(cfg_dataset, cfg_groupaverage, cfg_hrf, file_names, out):
             cfg_mse["mse_min_thresh"] = float(eval(cfg_mse["mse_min_thresh"]))
         if isinstance(cfg_mse["hrf_val"], str):
             cfg_mse["hrf_val"] = float(cfg_mse["hrf_val"])
-    cfg_mse['mse_amp_thresh'] = cfg_mse['mse_amp_thresh']
     
     #%%
     # # # 

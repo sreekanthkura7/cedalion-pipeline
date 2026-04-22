@@ -149,17 +149,6 @@ def hrf_est_func(cfg_hrf, run_files, data_quality_files, out_file):
 
     # SAVE AS NETCDF FILE
     ds_results.to_netcdf(out_file, mode='w')
-
-    # results = {
-    #     'hrf_est': hrf_estimate,
-    #     'mse_t': hrf_mse,
-    #     'bad_indices': bad_channels_all,
-    #     }
-    
-    # file = gzip.GzipFile(out_file, 'wb')  # save as gzipped pickle file
-    # file.write(pickle.dumps(results))
-    # file.close()    
-
     
     print(f"Hrf estimation data saved successfully to {out_file}!")
 

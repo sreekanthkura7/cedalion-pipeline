@@ -24,7 +24,8 @@ importlib.reload(groupavg)
 
 # root_dir = "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/"
 # config_path = os.path.join(root_dir, 'derivatives', 'cedalion', 'test', 'test_3', 'config_test_3.yml')
-config_path = "/projectnb/nphfnirs/s/users/shannon/Code/cedalion-pipeline/workflow/config/config.yaml"
+# config_path = "/projectnb/nphfnirs/s/users/shannon/Code/cedalion-pipeline/workflow/config/config.yaml"
+config_path = '/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/derivatives/cedalion/test_0421/test_1/config_test_1.yml'
 
 with open(config_path, 'r') as file:
     config = yaml.safe_load(file)

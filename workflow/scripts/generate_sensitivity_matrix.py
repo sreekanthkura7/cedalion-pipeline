@@ -5,14 +5,15 @@ import os
 import cedalion
 import cedalion.dot as dot
 import cedalion.io as io
-import gzip
-import pickle
+import glob
 
 
 def generate_Adot_func(cfg_Adot, root_dir, sub, head_model, save_dir_Adot):
     #%%
     # Load recording obj from first subject/task/run
-    snirf_path = os.path.join(root_dir, f"sub-{sub}", "nirs", f"sub-{sub}_task-{cfg_Adot['task'][0]}_run-{cfg_Adot['run'][0]}_nirs.snirf")
+    #task = task[0]  # assuming only 1 task is listed
+    snirf_path = find_first_snirf(root_dir, sub)
+    #snirf_path = os.path.join(root_dir, f"sub-{sub}", "nirs", f"sub-{sub}_task-{task}_run-01_nirs.snirf")
     recordings = io.read_snirf(snirf_path)
     rec = recordings[0]
     geo3d_meas = rec.geo3d
@@ -45,14 +46,14 @@ def generate_Adot_func(cfg_Adot, root_dir, sub, head_model, save_dir_Adot):
     sensitivity_fname = os.path.join(save_dir_Adot)
     fwm.compute_sensitivity(fluence_fname, sensitivity_fname)
 
-    # # Save geometric 2d and 3d positions to sidecar file
-    # geo_sidecar = {
-    #     'geo2d': rec.geo2d,
-    #     'geo3d': rec.geo3d
-    #     }
-    # file = gzip.GzipFile(save_dir_geo, 'wb')
-    # file.write(pickle.dumps(geo_sidecar))
-    # file.close()
+
+def find_first_snirf(root_dir, sub):
+    """Discover any available snirf run for this subject without relying on config task."""
+    pattern = os.path.join(root_dir, f"sub-{sub}", "nirs", f"sub-{sub}_task-*_run-01_nirs.snirf")
+    matches = sorted(glob.glob(pattern))
+    if not matches:
+        raise FileNotFoundError(f"No snirf files found for sub-{sub} under {root_dir}")
+    return matches[0]  # use the first one found
 
 
 #%%
@@ -60,10 +61,10 @@ def generate_Adot_func(cfg_Adot, root_dir, sub, head_model, save_dir_Adot):
 def main():
     
     # get params
-    #cfg_img_recon = snakemake.params.cfg_img_recon
     cfg_Adot = snakemake.params.cfg_Adot
     root_dir = snakemake.params.root_dir
     head_model = snakemake.params.head_model
+    #task = snakemake.params.task
 
     dirs = sorted(d.replace("sub-", "")for d in os.listdir(root_dir)if d.startswith("sub-")) # get list of subject folders
     sub = dirs[0] # grab first subject

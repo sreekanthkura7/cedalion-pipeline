@@ -24,9 +24,12 @@ import hrf_estimation as hrf
 import importlib
 importlib.reload(hrf)
 
-# config_path = "/projectnb/nphfnirs/s/users/shannon/Code/cedalion-pipeline/workflow/config/config_STS.yaml"
+# config_path = "/projectnb/nphfnirs/s/users/shannon/Code/cedalion-pipeline/workflow/config/config.yaml"
 # config_path = "/projectnb/nphfnirs/s/users/shannon/Code/cedalion_pipeline_regression_test/configs/ref/config_ref_1.yml" 
-config_path = "/projectnb/nphfnirs/s/users/shannon/Code/cedalion-pipeline/workflow/config/config.yaml"
+# config_path = "/projectnb/nphfnirs/s/users/shannon/Code/cedalion-pipeline/workflow/config/config.yaml"
+
+# config_path = "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD/derivatives/cedalion/final_ihope/config_STS_Q.yaml"
+config_path = '/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/derivatives/cedalion/test_0421/test_1/config_test_1.yml'
 
 
 with open(config_path, 'r') as file:
@@ -35,14 +38,14 @@ with open(config_path, 'r') as file:
 cfg_dataset = config['dataset']
 
 cfg_hrf = config['hrf_estimation']
-
+# 
 # subjects = cfg_dataset['subject']   # sub idx you want to test
 dirs = os.listdir(cfg_dataset['root_dir'])
 subjects = [d.replace("sub-", "") for d in dirs if "sub" in d and d.replace("sub-", "") not in config["dataset"]["subjects_to_exclude"]]
 tasks = cfg_dataset['task'] #[0]
 run = config["run"] = [f"{i:02d}" for i in range(1, int(config["dataset"]["num_runs"]) + 1)]
 # run = cfg_dataset['run']
-
+subjects = subjects[:2]  # only test on first 2 subjects for now
 
 # Loop through lists of tasks and subjects
 for subj in subjects:
