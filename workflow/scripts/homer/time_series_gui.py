@@ -1288,6 +1288,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.current_selection_subject = None  # Subject ID (e.g., "15")
         self.current_selection_task = None  # Task name (e.g., "IWHD")
         self.current_selection_run = None  # Run ID (e.g., "01")
+        
+        # Axis zoom preservation
+        self.preserved_xlim = None  # Store x-axis limits
+        self.preserved_ylim = None  # Store y-axis limits
 
         self._UI_SETUP()
         
@@ -1718,6 +1722,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.plots.mpl_connect("key_press_event", self._shift_is_pressed)
         self.plots.mpl_connect("key_release_event", self._shift_is_released)
         self.plots.mpl_connect("pick_event", self._optode_picked)
+        
+        # Connect axis limit change event for zoom preservation
+        self._dataTimeSeries_ax.callbacks.connect('xlim_changed', self._on_xlims_change)
+        self._dataTimeSeries_ax.callbacks.connect('ylim_changed', self._on_xlims_change)
 
         # Create Control Panel
         control_panel = QtWidgets.QGroupBox("Control Panel")
@@ -1882,6 +1890,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.opt2circ = QtWidgets.QCheckBox("View optodes as circles")
         self.opt2circ.stateChanged.connect(self._toggle_circles)
         opt_layout.addWidget(self.opt2circ)
+        
+        ## Create Preserve Axis Zoom Checkbox
+        self.preserve_axis_zoom = QtWidgets.QCheckBox("Preserve Axis Zoom")
+        self.preserve_axis_zoom.setChecked(False)
+        self.preserve_axis_zoom.setToolTip("Keep current axis zoom when switching measurements, subjects, or wavelengths")
+        self.preserve_axis_zoom.stateChanged.connect(self._preserve_zoom_changed)
+        opt_layout.addWidget(self.preserve_axis_zoom)
 
         ## Create Stimulus Selection Dropdown with checkboxes
         stim_label = QtWidgets.QLabel("Stimuli:")
@@ -3403,6 +3418,27 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.optodes.set_visible(False)
 
         self._optode_ax.figure.canvas.draw()
+    
+    def _preserve_zoom_changed(self):
+        """Handle preserve axis zoom checkbox state change"""
+        if self.preserve_axis_zoom.isChecked():
+            # Save current axis limits when checkbox is enabled
+            self.preserved_xlim = self._dataTimeSeries_ax.get_xlim()
+            self.preserved_ylim = self._dataTimeSeries_ax.get_ylim()
+            print(f"Preserve zoom enabled. Saved limits: x={self.preserved_xlim}, y={self.preserved_ylim}")
+        else:
+            # Clear saved limits when checkbox is disabled
+            self.preserved_xlim = None
+            self.preserved_ylim = None
+            print("Preserve zoom disabled. Cleared saved limits.")
+    
+    def _on_xlims_change(self, event_ax):
+        """Callback when axis limits change (e.g., after zooming)"""
+        if self.preserve_axis_zoom.isChecked() and event_ax == self._dataTimeSeries_ax:
+            # Update preserved limits when user zooms
+            self.preserved_xlim = self._dataTimeSeries_ax.get_xlim()
+            self.preserved_ylim = self._dataTimeSeries_ax.get_ylim()
+            print(f"Axis limits updated: x={self.preserved_xlim}, y={self.preserved_ylim}")
 
     def _toggle_hrf_view(self):
         """Toggle between time series and HRF display"""
@@ -4511,8 +4547,16 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self._optode_ax.figure.canvas.draw()
 
     def _draw_timeseries(self):
-
+        # Save current axis limits before clearing
         xxlim = self._dataTimeSeries_ax.get_xlim()
+        yylim = self._dataTimeSeries_ax.get_ylim()
+        
+        # If preserve zoom is enabled and we have saved limits, use those
+        if self.preserve_axis_zoom.isChecked():
+            if self.preserved_xlim is not None:
+                xxlim = self.preserved_xlim
+            if self.preserved_ylim is not None:
+                yylim = self.preserved_ylim
 
         self._dataTimeSeries_ax.clear()
 
@@ -4531,9 +4575,11 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.t = self.snirfData.time.values
         
         # Check if we need to reset xlim (e.g., switching from HRF view or initial load)
-        # If the saved xlim is outside the time series data range, reset it
-        if xxlim[1] < self.t[-1] * 0.5 or xxlim[0] < 0 or xxlim[1] > self.t[-1]:
-            xxlim = (0, 1)  # This will trigger auto-scaling later
+        # Skip this check if preserve axis zoom is enabled
+        if not self.preserve_axis_zoom.isChecked():
+            # If the saved xlim is outside the time series data range, reset it
+            if xxlim[1] < self.t[-1] * 0.5 or xxlim[0] < 0 or xxlim[1] > self.t[-1]:
+                xxlim = (0, 1)  # This will trigger auto-scaling later
 
         # Use unified channel selection - convert indices to channel names
         chan_sel = [self.snirfData.channel.values[i] for i in self.selected_channels 
@@ -4770,9 +4816,16 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self._dataTimeSeries_ax.set_ylabel(ylabel)
         self._dataTimeSeries_ax.grid("True", axis="y")
 
-        # set the xlim if desired
-        if xxlim[0] != 0 and xxlim[1] != 1:
-            self._dataTimeSeries_ax.set_xlim(xxlim)
+        # Set axis limits if preserve zoom is enabled or if we have non-default xlim
+        if self.preserve_axis_zoom.isChecked():
+            if xxlim[0] != 0 or xxlim[1] != 1:
+                self._dataTimeSeries_ax.set_xlim(xxlim)
+            if yylim[0] != 0 or yylim[1] != 1:
+                self._dataTimeSeries_ax.set_ylim(yylim)
+        else:
+            # Original behavior - only preserve xlim
+            if xxlim[0] != 0 or xxlim[1] != 1:
+                self._dataTimeSeries_ax.set_xlim(xxlim)
 
         self._dataTimeSeries_ax.figure.canvas.draw()
 
