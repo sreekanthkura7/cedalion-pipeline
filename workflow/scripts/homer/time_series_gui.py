@@ -38,13 +38,15 @@ warnings.simplefilter("ignore")
 class ConfigEditorDialog(QtWidgets.QDialog):
     """Dialog for editing YAML configuration blocks"""
     
-    def __init__(self, config_data, block_name, readonly_keys=None, field_tooltips=None, parent=None):
+    def __init__(self, config_data, block_name, readonly_keys=None, field_tooltips=None, parent=None, file_map=None, subjects=None):
         super().__init__(parent)
         self.config_data = config_data
         self.block_name = block_name
         self.readonly_keys = readonly_keys or []
         self.field_tooltips = field_tooltips or {}  # Map of field_key -> tooltip text
         self.field_widgets = {}
+        self.file_map = file_map  # For dataset matching calculations
+        self.subjects = subjects  # Full subject list from GUI
         
         self.setWindowTitle(f"Edit {block_name.replace('_', ' ').title()} Configuration")
         self.setMinimumWidth(600)
@@ -54,6 +56,9 @@ class ConfigEditorDialog(QtWidgets.QDialog):
     
     def init_ui(self):
         layout = QtWidgets.QVBoxLayout()
+        
+        # Initialize matching_info_label early (before building form)
+        self.matching_info_label = None
         
         # Add scroll area for the form
         scroll = QtWidgets.QScrollArea()
@@ -67,6 +72,15 @@ class ConfigEditorDialog(QtWidgets.QDialog):
         self._build_form(self.config_data, "")
         
         layout.addWidget(scroll)
+        
+        # Add matching info label for dataset configuration (below form)
+        if self.block_name == 'dataset' and self.file_map and self.subjects:
+            self.matching_info_label = QtWidgets.QLabel()
+            self.matching_info_label.setStyleSheet("font-size: 11pt;")
+            self.matching_info_label.setWordWrap(True)
+            layout.addWidget(self.matching_info_label)
+            # Calculate initial matching info
+            self._update_matching_info()
         
         # Add buttons
         button_box = QtWidgets.QDialogButtonBox(
@@ -94,8 +108,14 @@ class ConfigEditorDialog(QtWidgets.QDialog):
             else:
                 # Create appropriate widget for the value
                 is_readonly = full_key in self.readonly_keys
-                widget = self._create_widget(value, is_readonly)
+                widget = self._create_widget(value, is_readonly, key)
                 self.field_widgets[full_key] = (widget, value)
+                
+                # Connect signal for dataset matching info updates
+                if self.block_name == 'dataset' and self.file_map and self.subjects:
+                    if key in ['subjects_to_exclude', 'task']:
+                        if isinstance(widget, QtWidgets.QLineEdit):
+                            widget.textChanged.connect(self._update_matching_info)
                 
                 # Create label with tooltip if available
                 label = QtWidgets.QLabel(f"{key}:")
@@ -116,7 +136,7 @@ class ConfigEditorDialog(QtWidgets.QDialog):
                 
                 self.form_layout.addRow(label, widget)
     
-    def _create_widget(self, value, readonly=False):
+    def _create_widget(self, value, readonly=False, key=None):
         """Create appropriate widget based on value type"""
         if isinstance(value, bool):
             widget = QtWidgets.QCheckBox()
@@ -171,6 +191,68 @@ class ConfigEditorDialog(QtWidgets.QDialog):
             widget.setStyleSheet("background-color: #f0f0f0;")
         
         return widget
+    
+    def _update_matching_info(self):
+        """Calculate and display matching subjects/runs based on current form values"""
+        if not self.matching_info_label or not self.file_map or not self.subjects:
+            return
+        
+        try:
+            # Get current values from widgets
+            subjects_to_exclude_text = ""
+            task_text = ""
+            
+            for key, (widget, _) in self.field_widgets.items():
+                if 'subjects_to_exclude' in key and isinstance(widget, QtWidgets.QLineEdit):
+                    subjects_to_exclude_text = widget.text().strip()
+                elif key == 'task' and isinstance(widget, QtWidgets.QLineEdit):
+                    task_text = widget.text().strip()
+            
+            # Parse subjects_to_exclude (comma-separated list with optional quotes/brackets)
+            excluded_subjects = set()
+            if subjects_to_exclude_text:
+                # Remove brackets if present (handles ["01", "02"] format)
+                text = subjects_to_exclude_text.strip().strip('[]')
+                # Split by comma and clean up each item
+                for s in text.split(','):
+                    s = s.strip().strip('"\'').strip()
+                    if s:
+                        # Add "sub-" prefix if not already present
+                        if not s.startswith('sub-'):
+                            s = f"sub-{s}"
+                        excluded_subjects.add(s)
+            
+            print(f"DEBUG: Parsed excluded_subjects: {excluded_subjects}")
+            
+            # Calculate matching subjects
+            all_subjects = set(self.subjects)
+            matching_subjects = all_subjects - excluded_subjects
+            num_matching_subjects = len(matching_subjects)
+            
+            # Calculate matching runs based on task pattern
+            # Count runs in file_map that match the task for non-excluded subjects
+            num_matching_runs = 0
+            if task_text:  # Only count if task is specified
+                for subject in matching_subjects:
+                    if subject in self.file_map:
+                        for run in self.file_map[subject].keys():
+                            # Check if run matches task pattern
+                            if f"task-{task_text}" in run:
+                                num_matching_runs += 1
+            
+            # Format and display the information
+            info_text = (
+                f"<b>📊 Pipeline Scope:</b><br>"
+                f"• <b>{num_matching_subjects}</b> subjects will be included "
+                f"(out of {len(all_subjects)} total)<br>"
+                f"• <b>{num_matching_runs}</b> runs match the task pattern"
+            )
+            
+            self.matching_info_label.setText(info_text)
+            
+        except Exception as e:
+            print(f"Error updating matching info: {e}")
+            self.matching_info_label.setText("⚠️ Error calculating matches")
     
     def get_updated_data(self):
         """Extract updated values from form widgets"""
@@ -2751,8 +2833,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Extract field tooltips from comments
             field_tooltips = self._extract_field_comments(original_lines, block_name)
             
-            # Open editor dialog
-            dialog = ConfigEditorDialog(block_data, block_name, readonly_keys, field_tooltips, self)
+            # Open editor dialog with file_map and subjects if editing dataset block
+            if block_name == 'dataset':
+                dialog = ConfigEditorDialog(
+                    block_data, block_name, readonly_keys, field_tooltips, self,
+                    file_map=self.file_map, subjects=self.subjects
+                )
+            else:
+                dialog = ConfigEditorDialog(block_data, block_name, readonly_keys, field_tooltips, self)
             
             if dialog.exec() == QtWidgets.QDialog.Accepted:
                 # Get updated data
