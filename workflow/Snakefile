@@ -9,7 +9,7 @@ SNAKEFILE_DIR = Path(workflow.snakefile).parent
 # Use --configfile to specify config, or use default
 
 # default_config = join(SNAKEFILE_DIR, "config", "config.yaml")  # default config file in workflow/config folder
-default_config = "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD/derivatives/cedalion/final_ihope/config_STS_Q.yaml"
+default_config = "C:\\Users\\sreek\\Documents\\software\\fnirs_data\\Interactive_Walking_HD\\derivatives\\snakemake_config.yaml"
 # default_config = "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/derivatives/cedalion/test_new_folder_config_struct/test_1/config_test_1.yml" # have snakemake copy this file into derivatives folder
 # default_config = "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD/derivatives/cedalion/new_inclQ_test_imgrecon_newnoise_2/config_STS_Q.yml" # have snakemake copy this file into derivatives folder
 # default_config = "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data/derivatives/cedalion/test/test_1/config_test_1.yml" # have snakemake copy this file into derivatives folder

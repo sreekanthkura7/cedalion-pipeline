@@ -1,26 +1,20 @@
 dataset:
-  root_dir: "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data" # where your BIDS data lives
-  derivatives_subfolder: "test_new_ced"  # where to save results. Saves as: derivatives/cedalion/YOURSTRING
-  #subject: ["586", "587", "592", "618", "621"]  # subject IDs you want to include. DO NOT INCL EXCLUDED SUBS
-  subjects_to_exclude: ["587", "618"]  # list of subjects you want to EXCLUDE.
-  task: ["BS"]  # task list. Currently only do ONE task at a time.                  
-  num_runs: 3
-
-  # runs_to_exclude:   # FIXME: add this option to scripts
-  #   "586": ["01"]  # dict of runs to exclude for each subject.
-  #   "621": ["02"]
-
+  root_dir: "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD"  # where your BIDS data lives
+  derivatives_subfolder: "cedalion/new_inclQ_first"  # where to save results. Saves as: derivatives/cedalion/
+  subject: ["01", "02", "03", "04", "05", "06", "07", "08"]  # subject IDs you want to include. DO NOT INCL EXCLUDED SUBS
+  task: ["STS"]  # task list. Currently only do ONE task at a time.                  
+  run: ["01"]  # number of runs for this task. 
 preprocess:
   steps:
     median_filter:  # process your data with a median filter
-      enable: true
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
       order: 1
     prune:
       enable: false  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
       snr_thresh: 5
       sd_thresh_min: "1 mm"
-      sd_thresh_max: "45 mm"  
-      amp_thresh_min: 1e-3
+      sd_thresh_max: "45 mm"
+      amp_thresh_min: "1e-3"
       amp_thresh_max: 0.84
       perc_time_clean_thresh: 0.6  # for sci x psp mask
       sci_threshold: 0.6
@@ -29,43 +23,48 @@ preprocess:
       flag_use_sci: true
       flag_use_psp: false
     int2od:
-      enable: true
-    # INSERT MA CORRECTION IF ANY HERE
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
+    calc_slope_b4:  # calc slope before correction applied to od
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
+    calc_gvtd_b4:  # calc gvtd before correction applied to od
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
     tddr:  # NOTE: can do other MA techniques instead. ie. splineSG, PCA_recurse, wavelet, 
-      enable: false
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
+    calc_slope_after:
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
+    calc_gvtd_after:
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
     freq_filter:  # filter your data with a bandpass, hpf, or lpf
-      enable: false
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
       fmin: "0.01 Hz"  # set to 0 if you want a LPF
-      fmax: "0.5 Hz"   # set to 0 if you want a HPF
+      fmax: "0.5 Hz"  # set to 0 if you want a HPF
     od2conc:
-      enable: true
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
     plot_dqr:
-      enable: true
-
-hrf_estimation:   #  !!! make these constants instead?
-  rec_str: "conc"   # MUST BE 'conc' OR 'od_02'    - what you want to block average
-  stim_lst: ["left", "right"]  # list of stims from events.tsv you want to estimate the HRF of
-  t_pre: "2 second"   # time before stim onset you want to model  #!!! can we make this a list for diff trial types for GLM
-  t_post: "10 second" # time after stim onset you want to model
-  GLM:        
-   enable: true  # if true do GLM, false do block averaging
-   do_drift: 'legendre'  # Options: None, 'polynomial', 'legendre'
-   drift_order: 3 
-   do_short_sep: true
-   distance_threshold: "20 mm"
-   short_channel_method : "mean"
-   noise_model: "ar_irls"    #  ols, rls, wls, ar_irls, gls, glsar
-   basis_func: "gaussian_kernels"
-   basis_func_params:
+      enable: true  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
+hrf_estimation:
+  stim_lst: ["STS_Q"]  # list of stims from events.tsv you want to estimate the HRF of
+  t_pre: "2 second"  # time before stim onset you want to model 
+  t_post: "35 second"  # time after stim onset you want to model
+  rec_str: "conc"  # conc or od_corrected  - what you want to block average
+  GLM:
+    enable: true  # if true do GLM, false do block averaging
+    do_drift: false  # if true, does normal drift correction, false does not
+    do_drift_legendre: true
+    do_short_sep: true
+    drift_order: 3
+    distance_threshold: "20 mm"
+    short_channel_method: "mean"
+    noise_model: "arirls"
     t_delta: "1 second"
     t_std: "1 second"
-
-
 groupaverage:
   mse:    # for changing bad values IDed in prune channels mask. change vals for conc or od
+   mse_amp_thresh: 1e-3 
    mse_val_for_bad_data: "1e7 micromolar**2"
    mse_min_thresh: "1e0 micromolar**2"
-   hrf_val: "0 micromolar"
+   blockaverage_val: "0 micromolar**2"
+   hrf_val: "0 molar"
   # mse:  # od
   #  mse_val_for_bad_data: 1e1
   #  mse_min_thresh: 1e-6
@@ -73,14 +72,11 @@ groupaverage:
    
    
 image_recon:   # need to create sensitivity matrix first. Not included here yet.
-  generate_sensitivity: 
-    sub_folder: 'shannon'  # optional subfolder in /derivatives/cedalion/{folder}/probe/fw  # probe must be placed in folder/probe
-    forward_model: "MCX"  # MCX or NIRFASTER
-    head_model: 'icbm152'
   mag:   
-    enable: true  # perform image recon on magnitude of HRF averaged between time window (t_win)
-    t_win: [5, 8]
-  recon_mode: "mua2conc"
+    enable: false  # perform image recon on magnitude of HRF averaged between time window (t_win)
+    t_win: [5, 15]
+  DIRECT: 
+    enable: false  # true = direct, false = indirect
   Cmeas: 
     enable: true
   BRAIN_ONLY:      # reconstruct brain only OR scalp and brain
@@ -92,21 +88,17 @@ image_recon:   # need to create sensitivity matrix first. Not included here yet.
     threshold_scalp: "5 mm"
     sigma_brain: "1 mm"
     sigma_scalp: "5 mm"
-  noise_est_method: "posterior"   # posterior or measurement are options
-  mse:    # od   - for changing bad values IDed in prune channels mask
+  mse:  # od   - for changing bad values IDed in prune channels mask
+    mse_amp_thresh: 1e-3 #1.1e-6
     mse_val_for_bad_data: 1e1
     mse_min_thresh: 1e-6
     hrf_val: 0
+  probe_dir: "/projectnb/nphfnirs/s/datasets/Interactive_Walking_HD/derivatives/cedalion/probe/"
+  snirf_name_probe: "fullhead_56x144_NN22_System1.snirf"
+  head_model: 'ICBM152'
   alpha_meas: 1e4
   alpha_spatial: 1e-3
   spectrum: 'prahl'
-  lambda_spatial_depth: 1e-6   # old val for od 1.6e-09  , now 1e-6 for both od and conc 
-  plot_image:    
-    enable: false
-    flag_hbo_list: ['hbo', 'hbr']
-    flag_brain_list: ['brain', 'scalp']  # 'brain', 'scalp' - if you want to plot either
-    flag_img_list:  ['mag', 'tstat', 'noise']
-
 
 
   
