@@ -1717,6 +1717,16 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.hrf_hbr.setEnabled(False)  # Will be enabled when HRF view is active
         hrf_checkbox_layout.addWidget(self.hrf_hbr)
         
+        # Add file type filter for color coding
+        hrf_checkbox_layout.addWidget(QtWidgets.QLabel("  |  Color by:"))
+        self.color_file_type = QtWidgets.QComboBox()
+        self.color_file_type.addItems(["Preprocessing", "HRF Estimate", "Image Recon", "All (any complete)"])
+        self.color_file_type.setCurrentText("Preprocessing")
+        self.color_file_type.setToolTip("Choose which file type to check for color coding status")
+        self.color_file_type.currentTextChanged.connect(self._color_file_type_changed)
+        self.color_file_type.setMinimumWidth(150)
+        hrf_checkbox_layout.addWidget(self.color_file_type)
+        
         # Add separator
         separator = QtWidgets.QFrame()
         separator.setFrameShape(QtWidgets.QFrame.VLine)
@@ -2395,6 +2405,22 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     
                     # Save pipeline status and update colors only for actual runs (not dry runs or summaries)
                     if not dry_run and not show_summary:
+                        # Store target_rule for monitoring and final summary
+                        self.current_target_rule = target_rule
+                        
+                        # Check if there are actually files to process
+                        if self.expected_pipeline_outputs:
+                            print(f"DEBUG: {len(self.expected_pipeline_outputs)} files need processing - will clear cache")
+                            # Clear ALL cache ONLY if files need processing
+                            # This ensures fresh data loads when files complete, but preserves cache if nothing to do
+                            if self.cache:
+                                print(f"DEBUG: Clearing all cache ({len(self.cache)} entries) - files will be processed")
+                                self.cache.clear()
+                                self.statbar.showMessage(f"Starting pipeline - {len(self.expected_pipeline_outputs)} files to process")
+                        else:
+                            print(f"DEBUG: No files need processing - keeping cache intact")
+                            self.statbar.showMessage("All files already up-to-date - nothing to process")
+                        
                         # Save pipeline status before starting
                         self._save_pipeline_status_on_start()
                         
@@ -3344,6 +3370,23 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         """Handle changes to HRF chromophore selection"""
         if self.hrf_view.isChecked():
             self._draw_timeseries()
+    
+    def _color_file_type_changed(self):
+        """Handle changes to color file type filter - update all file colors"""
+        print(f"DEBUG: Color file type changed to: {self.color_file_type.currentText()}")
+        if self.snakemake_config:
+            self._update_all_file_colors()
+            # Force comboboxes to repaint
+            if hasattr(self, 'subj'):
+                self.subj.repaint()
+                if self.subj.view():
+                    self.subj.view().repaint()
+            if hasattr(self, 'run'):
+                self.run.repaint()
+                if self.run.view():
+                    self.run.view().repaint()
+            self._update_combobox_selection_colors()
+            self.statbar.showMessage(f"Color coding now based on: {self.color_file_type.currentText()}")
     
     def _launch_plot_probe(self):
         """Launch the Plot Probe GUI with current HRF data"""
@@ -5231,6 +5274,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             pipeline_status = {
                 'last_run_time': current_time,
                 'status': 'running',
+                'target_rule': getattr(self, 'current_target_rule', 'all_default'),
                 'expected_outputs': list(self.expected_pipeline_outputs),
                 'completed_outputs': []
             }
@@ -5277,10 +5321,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 
                 # Get current file status from summary
                 if self.snakefile_path and self.snakemake_config_path:
-                    print("DEBUG: Running summary to get current file status...")
+                    # Use the same target rule that was used to start the pipeline
+                    target_rule = self.pipeline_status.get('target_rule', 'all_default')
+                    print(f"DEBUG: Running summary with target_rule={target_rule} to get current file status...")
                     self.file_status_map = self._run_snakemake_summary(
                         self.snakefile_path,
-                        self.snakemake_config_path
+                        self.snakemake_config_path,
+                        target_rule
                     )
                 
                 # Update colors for all current files
@@ -5433,11 +5480,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # Start background worker to get current file status from summary
             if self.snakefile_path and monitor_config:
-                print("DEBUG: Starting background summary check...")
+                # Use the same target rule that was used to start the pipeline
+                target_rule = self.pipeline_status.get('target_rule', 'all_default')
+                print(f"DEBUG: Starting background summary check with target_rule={target_rule}...")
                 self.summary_worker = SummaryWorker(
                     self.snakefile_path,
                     monitor_config,
-                    self.conda_env
+                    self.conda_env,
+                    target_rule
                 )
                 self.summary_worker.summary_completed.connect(self._on_summary_completed)
                 self.summary_worker.summary_failed.connect(self._on_summary_failed)
@@ -5491,8 +5541,38 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # Clear cache for files that changed to black so they reload fresh
             if files_changed_to_black:
-                print(f"DEBUG: {len(files_changed_to_black)} files changed to black, clearing cache")
+                print(f"DEBUG: {len(files_changed_to_black)} files changed to black:")
+                for subj, run in files_changed_to_black:
+                    print(f"  - {subj} / {run}")
                 self._mark_updated_files_for_reload(files_changed_to_black)
+                
+                # Auto-reload if currently displayed file just completed
+                # NOTE: This only triggers ONCE when file status changes to black, not every 30 seconds
+                # files_changed_to_black only contains files that changed THIS update cycle
+                current_subj = self.subj.currentText() if hasattr(self, 'subj') else None
+                current_run = self.run.currentText() if hasattr(self, 'run') else None
+                
+                print(f"DEBUG: Currently displayed: subj='{current_subj}', run='{current_run}'")
+                print(f"DEBUG: Checking if ({current_subj}, {current_run}) in files_changed_to_black...")
+                
+                if current_subj and current_subj != "None" and current_run and current_run != "None":
+                    if (current_subj, current_run) in files_changed_to_black:
+                        print(f"DEBUG: MATCH! Currently displayed file {current_subj}/{current_run} completed - auto-reloading ONCE")
+                        self.statbar.showMessage(f"Auto-reloading {current_subj} {current_run} with fresh processed data...")
+                        # Trigger reload by calling the plot function
+                        QtCore.QTimer.singleShot(500, lambda: self._auto_reload_current_file())
+                    else:
+                        print(f"DEBUG: No match - displayed file not in changed list")
+                        # Check if ANY file type for this subject/run changed to black
+                        # (files_changed_to_black only tracks the "Color by" file type)
+                        # So let's check all file types manually
+                        any_file_changed = self._check_any_file_type_changed_to_black(current_subj, current_run)
+                        if any_file_changed:
+                            print(f"DEBUG: Another file type for {current_subj}/{current_run} completed - auto-reloading")
+                            self.statbar.showMessage(f"Auto-reloading {current_subj} {current_run} with fresh processed data...")
+                            QtCore.QTimer.singleShot(500, lambda: self._auto_reload_current_file())
+                else:
+                    print(f"DEBUG: Displayed file is None or empty - not auto-reloading")
             
             # Only check pipeline completion and update monitoring status if still running
             if self.pipeline_status.get('status') == 'running':
@@ -5589,9 +5669,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         final_summary_config = self.snakemake_config_path
                         print(f"DEBUG: Using current config for final summary: {final_summary_config}")
                     
+                    # Use the same target rule that was used to start the pipeline
+                    target_rule = self.pipeline_status.get('target_rule', 'all_default')
+                    print(f"DEBUG: Using target_rule={target_rule} for final summary")
+                    
                     file_status_map = self._run_snakemake_summary(
                         self.snakefile_path,
-                        final_summary_config
+                        final_summary_config,
+                        target_rule
                     )
                     
                     # In "run current only" mode, MERGE results (don't replace entire scope)
@@ -5749,9 +5834,11 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         """
         Determine color for a subject/run combination.
         
-        The file checked depends on the current view mode:
-        - Normal view: checks preprocessing file status
-        - HRF view: checks HRF estimate file status
+        The file checked depends on the "Color by" selector:
+        - Preprocessing: checks preprocessing file status
+        - HRF Estimate: checks HRF estimate file status
+        - Image Recon: checks image reconstruction file status
+        - All (any complete): checks all three, shows black if any is complete
         
         Normal mode (4 colors):
         - Black: In current scope, up-to-date
@@ -5765,20 +5852,79 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         - Non-selected file, needs update: Red (needs work but skipping)
         - Gray: File not in GUI config at all
         """
-        # Choose which file to check based on view mode
-        if self.hrf_view.isChecked():
-            file_path = self._get_expected_file_path(subject, run)  # HRF estimate file
+        # Determine which file(s) to check based on color_file_type selector
+        color_by = self.color_file_type.currentText() if hasattr(self, 'color_file_type') else "Preprocessing"
+        
+        file_paths_to_check = []
+        
+        if color_by == "HRF Estimate":
+            file_path = self._get_expected_file_path(subject, run)
             file_type = "HRF estimate"
-        else:
-            file_path = self._get_preprocessing_file_path(subject, run)  # Preprocessing file
+            if file_path:
+                file_paths_to_check.append(file_path)
+        elif color_by == "Image Recon":
+            file_path = self._get_image_recon_file_path(subject, run)
+            file_type = "image reconstruction"
+            if file_path:
+                file_paths_to_check.append(file_path)
+        elif color_by == "All (any complete)":
+            # Check all three file types
+            file_type = "any (preprocess/HRF/image)"
+            for path in [
+                self._get_preprocessing_file_path(subject, run),
+                self._get_expected_file_path(subject, run),
+                self._get_image_recon_file_path(subject, run)
+            ]:
+                if path:
+                    file_paths_to_check.append(path)
+        else:  # Default: "Preprocessing"
+            file_path = self._get_preprocessing_file_path(subject, run)
             file_type = "preprocessing"
+            if file_path:
+                file_paths_to_check.append(file_path)
         
-        print(f"DEBUG _get_file_color: subject={subject}, run={run}")
-        print(f"DEBUG: Looking for {file_type} file: {file_path}")
+        print(f"DEBUG _get_file_color: subject={subject}, run={run}, color_by={color_by}")
+        print(f"DEBUG: Looking for {file_type} file(s): {file_paths_to_check}")
         
-        if not file_path:
-            print(f"DEBUG: Could not determine {file_type} path, returning gray")
+        if not file_paths_to_check:
+            print(f"DEBUG: Could not determine {file_type} path(s), returning gray")
             return 'gray'
+        
+        # For "All" mode, check if ANY file is in scope and up-to-date
+        if color_by == "All (any complete)":
+            any_in_scope = False
+            any_up_to_date = False
+            any_needs_update = False
+            
+            for file_path in file_paths_to_check:
+                if file_path in self.current_scope_files:
+                    any_in_scope = True
+                    status_info = self.current_scope_files[file_path]
+                    status = status_info.get('status', '')
+                    plan = status_info.get('plan', '')
+                    is_up_to_date = (status == 'ok' and 'no update' in plan.lower())
+                    
+                    if is_up_to_date:
+                        any_up_to_date = True
+                    else:
+                        any_needs_update = True
+            
+            if not any_in_scope:
+                print(f"DEBUG: No files in current scope, returning gray")
+                return 'gray'
+            
+            if any_up_to_date:
+                print(f"DEBUG: At least one file up to date, returning black")
+                return 'black'
+            elif any_needs_update:
+                color = 'orange' if self._is_pipeline_running() else 'red'
+                print(f"DEBUG: All files need update, returning {color}")
+                return color
+            else:
+                return 'gray'
+        
+        # Single file mode - check the specific file
+        file_path = file_paths_to_check[0]
         
         # Check if file is in current scope (user's config)
         in_current_scope = file_path in self.current_scope_files
@@ -5963,6 +6109,36 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             print(f"DEBUG: Error constructing file path: {str(e)}")
             return None
     
+    def _get_image_recon_file_path(self, subject, run):
+        """Get the expected image reconstruction file path for pipeline output"""
+        if not self.snakemake_config_path:
+            return None
+        
+        try:
+            config_dir = os.path.dirname(self.snakemake_config_path)
+            
+            # Extract task name from run (e.g., "task-STS_run-01" -> "STS")
+            task = run.split('task-')[1].split('_')[0] if 'task-' in run else 'unknown'
+            run_num = run.split('run-')[1] if 'run-' in run else '01'
+            
+            # Image reconstruction file path (individual subject):
+            # derivatives/cedalion/XXX/image_results/sub-10/Xs_sub-10_task-STS_run-01.nc
+            file_path = os.path.join(
+                config_dir,
+                'image_results',
+                subject,
+                f"Xs_{subject}_task-{task}_run-{run_num}.nc"
+            )
+            
+            # Normalize to match summary output format
+            file_path = os.path.normpath(file_path)
+            
+            return file_path
+            
+        except Exception as e:
+            print(f"DEBUG: Error constructing image recon path: {str(e)}")
+            return None
+    
     def _mark_updated_files_for_reload(self, files_changed_to_black):
         """Clear cache for files that changed to black so they reload fresh on next selection"""
         cleared_count = 0
@@ -5972,9 +6148,133 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 del self.cache[cache_key]
                 cleared_count += 1
                 print(f"Cleared cache for {subject} {run} - will reload fresh processed data on next selection")
+            
+            # Also update file_map to point to newly processed files
+            self._update_file_map_for_processed_data(subject, run)
         
         if cleared_count > 0:
             self.statbar.showMessage(f"Cleared cache for {cleared_count} newly completed file(s) - fresh data will load on selection")
+    
+    def _auto_reload_current_file(self):
+        """Auto-reload the currently displayed file after it completes processing"""
+        try:
+            print("DEBUG _auto_reload_current_file: Function called!")
+            current_subj = self.subj.currentText()
+            current_run = self.run.currentText()
+            
+            print(f"DEBUG _auto_reload_current_file: current_subj='{current_subj}', current_run='{current_run}'")
+            
+            if current_subj and current_subj != "None" and current_run and current_run != "None":
+                # First, update the file_map to point to the newly processed files
+                print(f"DEBUG _auto_reload_current_file: Updating file_map for {current_subj}/{current_run}")
+                self._update_file_map_for_processed_data(current_subj, current_run)
+                
+                print(f"DEBUG _auto_reload_current_file: Conditions met, calling _run_changed('{current_run}') for {current_subj}/{current_run}")
+                # Force a replot by calling the selection changed handler with the current run text
+                self._run_changed(current_run, subject_changed=False)
+                print(f"DEBUG _auto_reload_current_file: _run_changed() completed")
+                self.statbar.showMessage(f"Reloaded {current_subj} {current_run} with fresh data")
+            else:
+                print(f"DEBUG _auto_reload_current_file: Conditions not met (subject or run is None)")
+        except Exception as e:
+            print(f"ERROR auto-reloading file: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def _update_file_map_for_processed_data(self, subject, run):
+        """Update file_map to point to newly processed files after pipeline completion"""
+        try:
+            print(f"DEBUG _update_file_map_for_processed_data: Updating paths for {subject}/{run}")
+            
+            # Construct the path to the newly processed file
+            if not self.snakemake_config_path:
+                print(f"DEBUG: No snakemake_config_path available")
+                return
+            
+            config_dir = os.path.dirname(self.snakemake_config_path)
+            
+            # Extract task and run number from combined run string
+            task = run.split('task-')[1].split('_')[0] if 'task-' in run else 'unknown'
+            run_num = run.split('run-')[1] if 'run-' in run else '01'
+            
+            # Construct preprocessed file path
+            preproc_path = os.path.join(
+                config_dir,
+                'preprocessed_data',
+                subject,
+                f"{subject}_task-{task}_run-{run_num}_nirs_preprocessed.snirf"
+            )
+            preproc_path = os.path.normpath(preproc_path)
+            
+            # Check if the file exists
+            if os.path.exists(preproc_path):
+                print(f"DEBUG: Found processed file: {preproc_path}")
+                
+                # Update file_map
+                if subject not in self.file_map:
+                    self.file_map[subject] = {}
+                if run not in self.file_map[subject]:
+                    self.file_map[subject][run] = {}
+                
+                # Update the pkl_path to point to the processed file
+                old_path = self.file_map[subject][run].get('pkl_path')
+                self.file_map[subject][run]['pkl_path'] = preproc_path
+                print(f"DEBUG: Updated pkl_path from '{old_path}' to '{preproc_path}'")
+            else:
+                print(f"DEBUG: Processed file not found at: {preproc_path}")
+                
+        except Exception as e:
+            print(f"ERROR updating file_map: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def _check_any_file_type_changed_to_black(self, subject, run):
+        """Check if any file type (preprocessing, HRF, or image recon) just completed for this subject/run
+        
+        This checks all file types to see if any are now up-to-date in the current scope,
+        which would indicate they were just processed and should trigger an auto-reload.
+        """
+        try:
+            print(f"DEBUG _check_any_file_type_changed_to_black: checking {subject}/{run}")
+            
+            # Define the three file types to check
+            file_types = [
+                ("preprocessing", self._get_preprocessing_file_path(subject, run)),
+                ("HRF", self._get_expected_file_path(subject, run)),
+                ("image_recon", self._get_image_recon_file_path(subject, run))
+            ]
+            
+            for file_type_name, file_path in file_types:
+                if not file_path:
+                    print(f"DEBUG:   {file_type_name}: path not found")
+                    continue
+                    
+                if file_path not in self.current_scope_files:
+                    print(f"DEBUG:   {file_type_name}: not in current scope")
+                    continue
+                
+                status_info = self.current_scope_files[file_path]
+                status = status_info.get('status', '')
+                plan = status_info.get('plan', '')
+                is_up_to_date = (status == 'ok' and 'no update' in plan.lower())
+                
+                print(f"DEBUG:   {file_type_name}: status={status}, plan={plan}, up_to_date={is_up_to_date}")
+                
+                if is_up_to_date:
+                    # File is up-to-date in the current scope
+                    # This likely means it was just processed (since cache was cleared)
+                    # Or if running "current selection only", this is the file being processed
+                    print(f"DEBUG:   -> {file_type_name} file is up-to-date, triggering reload")
+                    return True
+            
+            print(f"DEBUG: No up-to-date files found in current scope for {subject}/{run}")
+            return False
+            
+        except Exception as e:
+            print(f"ERROR _check_any_file_type_changed_to_black: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def _reapply_run_colors(self, subject, runs):
         """Reapply colors to run items after run combobox is repopulated"""
