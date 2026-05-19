@@ -1805,19 +1805,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.hrf_view.setEnabled(False)  # Will be enabled when HRF data is available
         hrf_checkbox_layout.addWidget(self.hrf_view)
         
-        # Add HbO checkbox
-        self.hrf_hbo = QtWidgets.QCheckBox("HbO")
-        self.hrf_hbo.setChecked(True)  # Default to HbO selected
-        self.hrf_hbo.stateChanged.connect(self._hrf_chromo_changed)
-        self.hrf_hbo.setEnabled(False)  # Will be enabled when HRF view is active
-        hrf_checkbox_layout.addWidget(self.hrf_hbo)
-        
-        # Add HbR checkbox
-        self.hrf_hbr = QtWidgets.QCheckBox("HbR")
-        self.hrf_hbr.setChecked(False)  # Default to HbR not selected
-        self.hrf_hbr.stateChanged.connect(self._hrf_chromo_changed)
-        self.hrf_hbr.setEnabled(False)  # Will be enabled when HRF view is active
-        hrf_checkbox_layout.addWidget(self.hrf_hbr)
+        # Note: HbO/HbR selection uses the wavelength/chromophore list widget below (wv)
+        # No separate checkboxes needed for HRF view
         
         # Add file type filter for color coding
         hrf_checkbox_layout.addWidget(QtWidgets.QLabel("  |  Color by:"))
@@ -2757,10 +2746,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if hasattr(self, 'hrf_view'):
                 gui_state['hrf_view'] = bool(self.hrf_view.isChecked())
                 if self.hrf_view.isChecked():
-                    if hasattr(self, 'hrf_hbo'):
-                        gui_state['hrf_hbo'] = bool(self.hrf_hbo.isChecked())
-                    if hasattr(self, 'hrf_hbr'):
-                        gui_state['hrf_hbr'] = bool(self.hrf_hbr.isChecked())
+                    # HbO/HbR selection is handled by wavelength_index (wv widget)
                     if hasattr(self, 'hrf_group_avg'):
                         gui_state['hrf_group_avg'] = bool(self.hrf_group_avg.isChecked())
             
@@ -2998,10 +2984,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     self.hrf_view.setChecked(gui_state['hrf_view'])
                     
                     if gui_state['hrf_view']:
-                        if 'hrf_hbo' in gui_state and hasattr(self, 'hrf_hbo'):
-                            self.hrf_hbo.setChecked(gui_state['hrf_hbo'])
-                        if 'hrf_hbr' in gui_state and hasattr(self, 'hrf_hbr'):
-                            self.hrf_hbr.setChecked(gui_state['hrf_hbr'])
+                        # HbO/HbR selection is handled by wavelength_index (wv widget)
                         if 'hrf_group_avg' in gui_state and hasattr(self, 'hrf_group_avg'):
                             self.hrf_group_avg.setChecked(gui_state['hrf_group_avg'])
                         print(f"  Restored HRF view state")
@@ -3836,9 +3819,30 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if hasattr(self, 'hrf_available_stim_types') and self.hrf_available_stim_types:
                 self.selected_stim_types = set(self.hrf_available_stim_types)
                 self._update_stim_button_text()
-            # Enable chromophore checkboxes
-            self.hrf_hbo.setEnabled(True)
-            self.hrf_hbr.setEnabled(True)
+            
+            # Automatically switch to concentration timeseries to show HbO/HbR
+            # Find a concentration-based timeseries (with chromo dimension)
+            conc_ts_found = False
+            if hasattr(self, 'timeseries_keys'):
+                for ts_name in self.timeseries_keys:
+                    if 'conc' in ts_name.lower():
+                        # Found concentration data, switch to it
+                        self.ts.blockSignals(True)
+                        for i in range(self.ts.count()):
+                            if self.ts.item(i).text() == ts_name:
+                                self.ts.setCurrentRow(i)
+                                conc_ts_found = True
+                                break
+                        self.ts.blockSignals(False)
+                        # Trigger the change manually
+                        if conc_ts_found:
+                            self._ts_changed(ts_name)
+                        break
+            
+            if not conc_ts_found:
+                self.statbar.showMessage("Warning: No concentration data found. HRF view requires concentration timeseries.")
+            
+            # Chromophore selection is handled by wv widget (no separate checkboxes)
             self.launch_plot_probe_btn.setEnabled(True)
             # If group average is checked, disable subject/run dropdowns
             if self.hrf_group_avg.isChecked():
@@ -3848,9 +3852,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # When disabling HRF view, clear all stimulus selections
             self.selected_stim_types = set()
             self._update_stim_button_text()
-            # Disable chromophore checkboxes
-            self.hrf_hbo.setEnabled(False)
-            self.hrf_hbr.setEnabled(False)
+            # Chromophore selection is handled by wv widget (no separate checkboxes)
             self.launch_plot_probe_btn.setEnabled(False)
             # Re-enable subject/run dropdowns
             self.subj.setEnabled(True)
@@ -3882,13 +3884,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             print("Calling _draw_timeseries from _hrf_group_avg_changed")
             self._draw_timeseries()
             # Save GUI state after HRF group average change
-            self._save_gui_state()
-    
-    def _hrf_chromo_changed(self):
-        """Handle changes to HRF chromophore selection"""
-        if self.hrf_view.isChecked():
-            self._draw_timeseries()
-            # Save GUI state after HRF chromophore change
             self._save_gui_state()
     
     def _color_file_type_changed(self):
@@ -5366,12 +5361,17 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         # Get available chromophores from HRF data
         available_chromos = list(hrf_est.coords['chromo'].values)
         
-        # Filter chromophores based on checkbox selections
+        # Get selected chromophores from wv widget (same as regular time series)
+        wvl_idx = self.wv.selectedItems()
+        wvl_idx = [foo.text() for foo in wvl_idx]
+        
+        # Filter chromophores based on wv selection
         selected_chromos = []
-        if self.hrf_hbo.isChecked() and 'HbO' in available_chromos:
-            selected_chromos.append('HbO')
-        if self.hrf_hbr.isChecked() and 'HbR' in available_chromos:
-            selected_chromos.append('HbR')
+        for sel_wv in wvl_idx:
+            # Remove brackets if present (e.g., "[HbO]" -> "HbO")
+            chromo = sel_wv.strip('[]')
+            if chromo in available_chromos:
+                selected_chromos.append(chromo)
         
         # If no chromophores selected, show message and return
         if not selected_chromos:
