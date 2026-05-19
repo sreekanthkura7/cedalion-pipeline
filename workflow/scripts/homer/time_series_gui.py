@@ -1292,6 +1292,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         # Axis zoom preservation
         self.preserved_xlim = None  # Store x-axis limits
         self.preserved_ylim = None  # Store y-axis limits
+        
+        # GUI state restoration flag
+        self._restoring_state = False  # Set to True while restoring saved state
 
         self._UI_SETUP()
         
@@ -1301,19 +1304,28 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         # Restore pipeline state and update colors
         self._restore_pipeline_state()
         
-        # Get the initial recording
-        if self.subjects:
+        # Check if we have saved GUI state to restore
+        has_saved_state = self._check_for_saved_gui_state()
+        
+        # Get the initial recording (only if no saved state to restore)
+        if not has_saved_state and self.subjects:
             initial_subject = self.subjects[0]
             if initial_subject in self.file_map and self.subject_to_runs_map.get(initial_subject):
                  initial_run = self.subject_to_runs_map[initial_subject][0]
                  self._update_recording_data(initial_subject, initial_run, subject_changed=True)
 
-        if self.snirfRec is None:
+        if self.snirfRec is None and not has_saved_state:
              print("Warning: Could not load an initial recording.")
         
+        # Load saved GUI state (subject, run, selections, etc.)
+        if has_saved_state:
+            self._load_gui_state()
     
     def closeEvent(self, event):
         """Clean up resources when GUI is closed"""
+        # Save current GUI state before closing
+        self._save_gui_state()
+        
         # Stop monitoring
         if self.pipeline_monitor_timer:
             self.pipeline_monitor_timer.stop()
@@ -2595,14 +2607,32 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         """Save homer.config file with Snakefile, config paths, and pipeline status"""
         try:
             homer_config_path = os.path.join(derivatives_dir, 'homer.config')
-            homer_config = {
-                'snakefile_path': snakefile_path,
-                'config_path': config_path
-            }
+            
+            # Load existing config to preserve other sections (like gui_state)
+            homer_config = {}
+            if os.path.exists(homer_config_path):
+                try:
+                    with open(homer_config_path, 'r') as f:
+                        homer_config = yaml.safe_load(f) or {}
+                except yaml.constructor.ConstructorError:
+                    try:
+                        with open(homer_config_path, 'r') as f:
+                            homer_config = yaml.unsafe_load(f) or {}
+                    except:
+                        homer_config = {}
+            
+            # Update snakemake paths
+            homer_config['snakefile_path'] = snakefile_path
+            homer_config['config_path'] = config_path
+            
             if pipeline_status:
                 homer_config['pipeline_status'] = pipeline_status
+            
+            # Clean config to remove numpy objects before saving
+            homer_config_clean = self._clean_config_for_yaml(homer_config)
+            
             with open(homer_config_path, 'w') as f:
-                yaml.dump(homer_config, f, default_flow_style=False)
+                yaml.dump(homer_config_clean, f, default_flow_style=False, sort_keys=False)
             print(f"Saved homer.config to {homer_config_path}")
         except Exception as e:
             print(f"Warning: Could not save homer.config: {str(e)}")
@@ -2624,8 +2654,23 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             print(f"Found homer.config at {homer_config_path}")
             
-            with open(homer_config_path, 'r') as f:
-                homer_config = yaml.safe_load(f)
+            # Try safe_load first, fall back to unsafe if needed
+            homer_config = None
+            try:
+                with open(homer_config_path, 'r') as f:
+                    homer_config = yaml.safe_load(f)
+            except yaml.constructor.ConstructorError:
+                # File contains unsafe YAML tags (numpy objects, etc.)
+                print("Warning: homer.config contains unsafe YAML tags, using unsafe_load")
+                try:
+                    with open(homer_config_path, 'r') as f:
+                        homer_config = yaml.unsafe_load(f)
+                except Exception as e:
+                    print(f"Warning: Could not load homer.config even with unsafe_load: {e}")
+                    return
+            
+            if not homer_config:
+                return
             
             snakefile_path = homer_config.get('snakefile_path')
             config_path = homer_config.get('config_path')
@@ -2642,6 +2687,341 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         print(f"  Config not found: {config_path}")
         except Exception as e:
             print(f"Warning: Could not auto-load homer.config: {str(e)}")
+    
+    def _save_gui_state(self):
+        """Save current GUI state (subject, run, selections) to homer.config"""
+        try:
+            # Don't save if we're in the middle of restoring state
+            if hasattr(self, '_restoring_state') and self._restoring_state:
+                return
+            
+            if not self.path_to_data or not os.path.exists(self.path_to_data):
+                return
+            
+            homer_config_path = os.path.join(self.path_to_data, 'homer.config')
+            
+            # Load existing config or create new one
+            # Try safe_load first, fall back to unsafe if needed
+            homer_config = {}
+            if os.path.exists(homer_config_path):
+                try:
+                    with open(homer_config_path, 'r') as f:
+                        homer_config = yaml.safe_load(f) or {}
+                except yaml.constructor.ConstructorError:
+                    # File contains unsafe YAML tags (e.g., numpy objects)
+                    # Load with unsafe_load but only extract safe parts
+                    try:
+                        with open(homer_config_path, 'r') as f:
+                            homer_config = yaml.unsafe_load(f) or {}
+                    except:
+                        homer_config = {}
+            
+            # Collect GUI state
+            gui_state = {}
+            
+            # Subject and run
+            if hasattr(self, 'subj') and self.subj.currentText():
+                gui_state['subject'] = str(self.subj.currentText())
+            if hasattr(self, 'run') and self.run.currentText():
+                gui_state['run'] = str(self.run.currentText())
+            
+            # Timeseries selection
+            if hasattr(self, 'ts') and self.ts.currentItem():
+                gui_state['timeseries'] = str(self.ts.currentItem().text())
+            
+            # Wavelength/chromo selection
+            if hasattr(self, 'wv'):
+                gui_state['wavelength_index'] = int(self.wv.currentRow())
+            
+            # Selected channels - convert to native Python ints
+            if hasattr(self, 'selected_channels'):
+                gui_state['selected_channels'] = [int(ch) for ch in self.selected_channels]
+            
+            # Preserve axis zoom checkbox state
+            if hasattr(self, 'preserve_axis_zoom'):
+                gui_state['preserve_axis_zoom'] = bool(self.preserve_axis_zoom.isChecked())
+            
+            # View optodes as circles checkbox state
+            if hasattr(self, 'opt2circ'):
+                gui_state['opt2circ'] = bool(self.opt2circ.isChecked())
+            
+            # Auxiliary data selection
+            if hasattr(self, 'aux') and self.aux.currentText():
+                gui_state['aux'] = str(self.aux.currentText())
+            
+            # Selected stimulus types (for both regular and HRF view)
+            if hasattr(self, 'selected_stim_types'):
+                gui_state['selected_stim_types'] = [str(s) for s in self.selected_stim_types]
+            
+            # HRF view state
+            if hasattr(self, 'hrf_view'):
+                gui_state['hrf_view'] = bool(self.hrf_view.isChecked())
+                if self.hrf_view.isChecked():
+                    if hasattr(self, 'hrf_hbo'):
+                        gui_state['hrf_hbo'] = bool(self.hrf_hbo.isChecked())
+                    if hasattr(self, 'hrf_hbr'):
+                        gui_state['hrf_hbr'] = bool(self.hrf_hbr.isChecked())
+                    if hasattr(self, 'hrf_group_avg'):
+                        gui_state['hrf_group_avg'] = bool(self.hrf_group_avg.isChecked())
+            
+            # Update homer.config with gui_state
+            homer_config['gui_state'] = gui_state
+            
+            # Clean homer_config to remove any numpy objects before saving
+            homer_config_clean = self._clean_config_for_yaml(homer_config)
+            
+            # Write back to file
+            with open(homer_config_path, 'w') as f:
+                yaml.dump(homer_config_clean, f, default_flow_style=False, sort_keys=False)
+            
+            print(f"Saved GUI state to {homer_config_path}")
+            
+        except Exception as e:
+            print(f"Warning: Could not save GUI state: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def _clean_config_for_yaml(self, obj):
+        """Recursively clean config object to remove numpy types and make it YAML-safe"""
+        if isinstance(obj, dict):
+            return {str(k): self._clean_config_for_yaml(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._clean_config_for_yaml(item) for item in obj]
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, (str, int, float, bool)) or obj is None:
+            return obj
+        else:
+            # For other types, try to convert to string
+            try:
+                return str(obj)
+            except:
+                return None
+    
+    def _check_for_saved_gui_state(self):
+        """Check if there's a saved GUI state in homer.config"""
+        try:
+            if not self.path_to_data or not os.path.exists(self.path_to_data):
+                return False
+            
+            homer_config_path = os.path.join(self.path_to_data, 'homer.config')
+            
+            if not os.path.exists(homer_config_path):
+                return False
+            
+            # Try to load and check for gui_state section
+            try:
+                with open(homer_config_path, 'r') as f:
+                    homer_config = yaml.safe_load(f)
+            except yaml.constructor.ConstructorError:
+                try:
+                    with open(homer_config_path, 'r') as f:
+                        homer_config = yaml.unsafe_load(f)
+                except:
+                    return False
+            
+            return homer_config is not None and 'gui_state' in homer_config
+            
+        except Exception:
+            return False
+    
+    def _load_gui_state(self):
+        """Load and restore GUI state from homer.config"""
+        try:
+            if not self.path_to_data or not os.path.exists(self.path_to_data):
+                return
+            
+            homer_config_path = os.path.join(self.path_to_data, 'homer.config')
+            
+            if not os.path.exists(homer_config_path):
+                return
+            
+            # Try safe_load first, fall back to unsafe if needed
+            homer_config = None
+            try:
+                with open(homer_config_path, 'r') as f:
+                    homer_config = yaml.safe_load(f)
+            except yaml.constructor.ConstructorError:
+                # File contains unsafe YAML tags - try unsafe_load
+                try:
+                    with open(homer_config_path, 'r') as f:
+                        homer_config = yaml.unsafe_load(f)
+                except Exception as e:
+                    print(f"Warning: Could not load homer.config even with unsafe_load: {e}")
+                    return
+            
+            if not homer_config or 'gui_state' not in homer_config:
+                return
+            
+            gui_state = homer_config['gui_state']
+            print(f"Restoring GUI state from homer.config: {list(gui_state.keys())}")
+            
+            # Set a flag to prevent saving during restoration
+            self._restoring_state = True
+            
+            try:
+                # Restore subject
+                if 'subject' in gui_state and hasattr(self, 'subj'):
+                    subject = gui_state['subject']
+                    index = self.subj.findText(subject)
+                    if index >= 0:
+                        self.subj.blockSignals(True)
+                        self.subj.setCurrentIndex(index)
+                        self.subj.blockSignals(False)
+                        print(f"  Restored subject: {subject}")
+                
+                # Restore run
+                if 'run' in gui_state and hasattr(self, 'run'):
+                    run = gui_state['run']
+                    # Update run list for the selected subject first
+                    if hasattr(self, 'subj'):
+                        subject_key = self.subj.currentText()
+                        if subject_key in self.subject_to_runs_map:
+                            self.run.blockSignals(True)
+                            self.run.clear()
+                            self.run.addItems(self.subject_to_runs_map[subject_key])
+                            self.run.blockSignals(False)
+                    
+                    # Now set the run
+                    index = self.run.findText(run)
+                    if index >= 0:
+                        self.run.blockSignals(True)
+                        self.run.setCurrentIndex(index)
+                        self.run.blockSignals(False)
+                        print(f"  Restored run: {run}")
+                
+                # Load the data for subject/run before restoring other selections
+                if 'subject' in gui_state and 'run' in gui_state:
+                    self._update_recording_data(gui_state['subject'], gui_state['run'], subject_changed=True)
+                
+                # Restore timeseries selection
+                if 'timeseries' in gui_state and hasattr(self, 'ts') and hasattr(self, 'snirfRec'):
+                    ts_name = gui_state['timeseries']
+                    for i in range(self.ts.count()):
+                        if self.ts.item(i).text() == ts_name:
+                            self.ts.blockSignals(True)
+                            self.ts.setCurrentRow(i)
+                            self.ts.blockSignals(False)
+                            # Manually trigger the timeseries change without saving
+                            if ts_name != 'amp' and self.processed_rec and hasattr(self.processed_rec, 'timeseries') and ts_name in self.processed_rec.timeseries:
+                                self.snirfData = self.processed_rec.timeseries[ts_name]
+                            else:
+                                self.snirfData = self.snirfRec.timeseries.get(ts_name)
+                            self.ts_sel = ts_name
+                            print(f"  Restored timeseries: {ts_name}")
+                            break
+                
+                # Update wavelength/concentration dropdown based on timeseries
+                if hasattr(self, 'snirfData') and self.snirfData is not None:
+                    if "wavelength" in self.snirfData.dims:
+                        self.wv_label.setText("Wavelength:")
+                        self.wv.clear()
+                        for i_w, wvl in enumerate(self.snirfData.wavelength.values):
+                            self.wv.insertItem(i_w, str(wvl))
+                    elif "chromo" in self.snirfData.dims:
+                        self.wv_label.setText("Concentration:")
+                        self.wv.clear()
+                        for i_w, wvl in enumerate(self.snirfData.chromo.values):
+                            self.wv.insertItem(i_w, f"[{str(wvl)}]")
+                
+                # Restore wavelength/chromo index
+                if 'wavelength_index' in gui_state and hasattr(self, 'wv'):
+                    wv_index = gui_state['wavelength_index']
+                    if 0 <= wv_index < self.wv.count():
+                        self.wv.blockSignals(True)
+                        self.wv.setCurrentRow(wv_index)
+                        self.wv.blockSignals(False)
+                        print(f"  Restored wavelength index: {wv_index}")
+                
+                # Restore selected channels
+                if 'selected_channels' in gui_state and hasattr(self, 'snirfData') and self.snirfData is not None:
+                    saved_channels = gui_state['selected_channels']
+                    # Validate channels are within range
+                    max_channel = len(self.snirfData.channel.values) - 1
+                    valid_channels = [ch for ch in saved_channels if 0 <= ch <= max_channel]
+                    self.selected_channels = valid_channels
+                    print(f"  Restored {len(valid_channels)} selected channels")
+                
+                # Restore preserve axis zoom state
+                if 'preserve_axis_zoom' in gui_state and hasattr(self, 'preserve_axis_zoom'):
+                    self.preserve_axis_zoom.blockSignals(True)
+                    self.preserve_axis_zoom.setChecked(gui_state['preserve_axis_zoom'])
+                    self.preserve_axis_zoom.blockSignals(False)
+                    print(f"  Restored preserve_axis_zoom: {gui_state['preserve_axis_zoom']}")
+                
+                # Restore view optodes as circles state
+                if 'opt2circ' in gui_state and hasattr(self, 'opt2circ'):
+                    self.opt2circ.blockSignals(True)
+                    self.opt2circ.setChecked(gui_state['opt2circ'])
+                    self.opt2circ.blockSignals(False)
+                    # Manually trigger the toggle to update visibility
+                    self._toggle_circles()
+                    print(f"  Restored opt2circ: {gui_state['opt2circ']}")
+                
+                # Restore auxiliary selection
+                if 'aux' in gui_state and hasattr(self, 'aux'):
+                    aux_name = gui_state['aux']
+                    index = self.aux.findText(aux_name)
+                    if index >= 0:
+                        self.aux.blockSignals(True)
+                        self.aux.setCurrentIndex(index)
+                        self.aux.blockSignals(False)
+                        # Manually set aux selection
+                        if aux_name != "None" and aux_name != "dark signal":
+                            self.aux_sel = self.snirfRec.aux_ts[aux_name]
+                            self.aux_type = aux_name
+                        else:
+                            self.aux_sel = []
+                            self.aux_type = None
+                        print(f"  Restored aux: {aux_name}")
+                
+                # Restore selected stimulus types (for both regular and HRF view)
+                if 'selected_stim_types' in gui_state:
+                    if hasattr(self, 'available_stim_types'):
+                        # Only restore stimuli that are available in current dataset
+                        saved_stims = set(gui_state['selected_stim_types'])
+                        valid_stims = saved_stims.intersection(set(self.available_stim_types))
+                        self.selected_stim_types = valid_stims
+                        self._update_stim_button_text()
+                        print(f"  Restored {len(valid_stims)} selected stimuli")
+                    else:
+                        # Store for later if available_stim_types not yet set
+                        self.selected_stim_types = set(gui_state['selected_stim_types'])
+                        print(f"  Stored {len(self.selected_stim_types)} selected stimuli")
+                
+                # Restore HRF view state
+                if 'hrf_view' in gui_state and hasattr(self, 'hrf_view'):
+                    self.hrf_view.setChecked(gui_state['hrf_view'])
+                    
+                    if gui_state['hrf_view']:
+                        if 'hrf_hbo' in gui_state and hasattr(self, 'hrf_hbo'):
+                            self.hrf_hbo.setChecked(gui_state['hrf_hbo'])
+                        if 'hrf_hbr' in gui_state and hasattr(self, 'hrf_hbr'):
+                            self.hrf_hbr.setChecked(gui_state['hrf_hbr'])
+                        if 'hrf_group_avg' in gui_state and hasattr(self, 'hrf_group_avg'):
+                            self.hrf_group_avg.setChecked(gui_state['hrf_group_avg'])
+                        print(f"  Restored HRF view state")
+                
+                # Redraw with restored state
+                if hasattr(self, 'snirfData') and self.snirfData is not None:
+                    self._draw_timeseries()
+                    print("GUI state restored successfully")
+                else:
+                    print("GUI state partially restored (no data to draw)")
+                
+            finally:
+                # Clear the restoration flag
+                self._restoring_state = False
+            
+        except Exception as e:
+            print(f"Warning: Could not load GUI state: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self._restoring_state = False
     
     def _load_snakemake_config(self, snakefile_path, config_path):
         """Load Snakemake config and update menu dynamically"""
@@ -3334,6 +3714,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.selected_channels = [channel_idx]
         
         self._draw_timeseries()
+        
+        # Save GUI state after channel selection
+        self._save_gui_state()
 
     def _optode_scatter_picked(self, event):
         """Handle clicking on optodes - toggles channels from optode in selection"""
@@ -3400,6 +3783,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.selected = []
         
         self._draw_timeseries()
+        
+        # Save GUI state after optode selection
+        self._save_gui_state()
 
     def _toggle_circles(self):
         if self.opt2circ.isChecked():
@@ -3431,6 +3817,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.preserved_xlim = None
             self.preserved_ylim = None
             print("Preserve zoom disabled. Cleared saved limits.")
+        
+        # Save GUI state after preserve zoom setting change
+        self._save_gui_state()
     
     def _on_xlims_change(self, event_ax):
         """Callback when axis limits change (e.g., after zooming)"""
@@ -3472,6 +3861,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self._update_combobox_selection_colors()
         
         self._draw_timeseries()
+        
+        # Save GUI state after HRF view toggle
+        self._save_gui_state()
     
     def _hrf_group_avg_changed(self):
         """Handle changes to HRF group average checkbox"""
@@ -3489,11 +3881,15 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         if self.hrf_view.isChecked():
             print("Calling _draw_timeseries from _hrf_group_avg_changed")
             self._draw_timeseries()
+            # Save GUI state after HRF group average change
+            self._save_gui_state()
     
     def _hrf_chromo_changed(self):
         """Handle changes to HRF chromophore selection"""
         if self.hrf_view.isChecked():
             self._draw_timeseries()
+            # Save GUI state after HRF chromophore change
+            self._save_gui_state()
     
     def _color_file_type_changed(self):
         """Handle changes to color file type filter - update all file colors"""
@@ -4292,6 +4688,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             self._update_stim_button_text()
             self._draw_timeseries()
+            
+            # Save GUI state after stimuli selection change
+            self._save_gui_state()
 
     def _select_all_stims(self, select_all):
         """Select or deselect all stimulus checkboxes"""
@@ -4347,6 +4746,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Update current selection colors
         self._update_combobox_selection_colors()
+        
+        # Save GUI state after run change
+        self._save_gui_state()
 
     def _update_run_box(self):
         """(DEPRECATED) - This logic is now handled in _subj_changed."""
@@ -4479,6 +4881,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
 
     def _wv_changed(self):
         self._draw_timeseries()
+        
+        # Save GUI state after wavelength change
+        self._save_gui_state()
 
     def _ts_changed(self, s):
         # Extract data
@@ -4514,6 +4919,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.wv.setCurrentRow(0)
 
         self._draw_timeseries()
+        
+        # Save GUI state after timeseries change
+        self._save_gui_state()
 
     def _update_channel_highlights(self):
         """Update the channel line highlighting on the probe display"""
@@ -5139,6 +5547,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.aux_type = s
 
         self._draw_timeseries()
+        
+        # Save GUI state after auxiliary selection change
+        self._save_gui_state()
 
     # ============== Pipeline Monitoring Methods ==============
     
@@ -5448,10 +5859,22 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             homer_config_path = os.path.join(derivatives_dir, 'homer.config')
             
             if os.path.exists(homer_config_path):
-                with open(homer_config_path, 'r') as f:
-                    homer_config = yaml.safe_load(f) or {}
+                # Try safe_load first, fall back to unsafe if needed
+                homer_config = None
+                try:
+                    with open(homer_config_path, 'r') as f:
+                        homer_config = yaml.safe_load(f) or {}
+                except yaml.constructor.ConstructorError:
+                    print("Warning: homer.config contains unsafe YAML tags, using unsafe_load for pipeline state")
+                    try:
+                        with open(homer_config_path, 'r') as f:
+                            homer_config = yaml.unsafe_load(f) or {}
+                    except Exception as e:
+                        print(f"Warning: Could not load homer.config even with unsafe_load: {e}")
+                        return
                 
                 self.pipeline_status = homer_config.get('pipeline_status', {})
+                print(f"DEBUG: Restored pipeline_status: {self.pipeline_status}")
                 print(f"DEBUG: Restored pipeline_status: {self.pipeline_status}")
                 
                 # Restore expected and completed outputs
