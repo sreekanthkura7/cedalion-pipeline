@@ -5025,7 +5025,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
 
         wvl_idx = self.wv.selectedItems()
         wvl_idx = [foo.text() for foo in wvl_idx]
-        wvl_ls = ["-", ":"]
+        
+        # Use solid line if only one wavelength/chromophore selected, 
+        # otherwise use solid and dotted to distinguish them
+        if len(wvl_idx) == 1:
+            wvl_ls = ["-"]  # Only solid line
+        else:
+            wvl_ls = ["-", ":"]  # Solid and dotted
 
         ## Grab timeseries y-label
         ylabel = self.ts_sel
@@ -5081,10 +5087,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
 
         # Plot timeseries
         if "wavelength" in self.snirfData.dims:
-            for sel_wv in wvl_idx:
-                idx = self.snirfData.wavelength.values
-                idx = [str(foo) for foo in idx]
-                idx = idx.index(sel_wv)
+            for i_wv, sel_wv in enumerate(wvl_idx):
+                # Use index within selected wavelengths for line style
+                ls_idx = i_wv % len(wvl_ls) if len(wvl_ls) > 1 else 0
+                
                 for i_ch, chan in enumerate(nempty_chan_sel):
                     # Get the actual channel index for consistent coloring
                     chan_idx = np.where(self.snirfData.channel.values == chan)[0][0]
@@ -5099,7 +5105,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     self.timeSeries = self._dataTimeSeries_ax.plot(
                         self.t,
                         self.snirfData.sel(channel=chan, wavelength=sel_wv).T,
-                        ls=wvl_ls[idx],
+                        ls=wvl_ls[ls_idx],
                         zorder=5,
                         color=chan_col[color_idx],
                     )
@@ -5122,11 +5128,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     )
 
         elif "chromo" in self.snirfData.dims:
-            for sel_wv in wvl_idx:
-                idx = self.snirfData.chromo.values
-                idx = [str(foo) for foo in idx]
-                idx = idx.index(sel_wv[1:-1])
-
+            for i_wv, sel_wv in enumerate(wvl_idx):
+                # Use index within selected chromophores for line style
+                ls_idx = i_wv % len(wvl_ls) if len(wvl_ls) > 1 else 0
+                
                 if "[" in sel_wv:
                     sel_wv = sel_wv[1:-1]
 
@@ -5144,7 +5149,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     self.timeSeries = self._dataTimeSeries_ax.plot(
                         self.t,
                         self.snirfData.sel(channel=chan, chromo=sel_wv).T,
-                        ls=wvl_ls[idx],
+                        ls=wvl_ls[ls_idx],
                         zorder=5,
                         color=chan_col[color_idx],
                     )
@@ -5341,11 +5346,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8C471"
         ]
         
-        # Get selected wavelength/chromo
-        wvl_idx = self.wv.selectedItems()
-        wvl_idx = [foo.text() for foo in wvl_idx]
-        wvl_ls = ["-", ":"]
-        
         # Get trial types from HRF data
         trial_types = hrf_est.coords['trial_type'].values
         
@@ -5380,6 +5380,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             return
         
         print(f"Plotting HRF - Trial types: {trial_types}, Chromos: {selected_chromos}, Group avg: {self.hrf_group_avg.isChecked()}")
+        
+        # Define line styles for chromophores
+        # Use solid if only one chromophore selected, otherwise alternate solid/dotted
+        if len(selected_chromos) == 1:
+            chromo_ls = {selected_chromos[0]: '-'}  # Only solid line
+        else:
+            chromo_ls = {'HbO': '-', 'HbR': ':'}  # Solid for HbO, dotted for HbR
         
         ymin = 100
         ymax = -100
@@ -5420,24 +5427,29 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                                 # Extract HRF data for this channel, trial type, and chromo
                                 hrf_values = hrf_est.sel(channel=channel, trial_type=trial_type, chromo=chromo_name).values
                                 
-                                # Set style based on chromophore
-                                if chromo_name == 'HbO':
-                                    linewidth = 2.5  # Thicker for HbO
-                                    alpha = 0.9      # More opaque
-                                    marker_style = ''  # No marker for HbO
-                                    marker_size = 0
-                                else:  # HbR
-                                    linewidth = 1.5  # Thinner for HbR
-                                    alpha = 0.8      # Slightly more transparent
-                                    marker_style = 'o' if marker else ''  # Add small markers for HbR
-                                    marker_size = 3
+                                # Get line style for this chromophore
+                                chromo_line_style = chromo_ls.get(chromo_name, '-')
+                                
+                                # Combine stimulus line style with chromophore style
+                                # For multiple stimuli, vary the dash pattern
+                                if len(trial_types) == 1:
+                                    combined_line_style = chromo_line_style
+                                else:
+                                    # Use chromophore style as base, add stimulus distinction if needed
+                                    combined_line_style = line_style if chromo_line_style == '-' else chromo_line_style
+                                
+                                # Set consistent styling
+                                linewidth = 2.0
+                                alpha = 0.85
+                                marker_style = marker if marker else ''
+                                marker_size = 3 if marker else 0
                                 
                                 # Plot with label showing channel, trial type and chromo
                                 label = f"{chromo_name}-{trial_type}-{channel}"
                                 self._dataTimeSeries_ax.plot(
                                     hrf_time,
                                     hrf_values,
-                                    ls=line_style,
+                                    ls=combined_line_style,
                                     marker=marker_style,
                                     markersize=marker_size,
                                     markevery=5,  # Only show markers every 5 points to avoid clutter
@@ -5481,24 +5493,29 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                                 # Extract HRF data for this channel, trial type, and chromo
                                 hrf_values = hrf_est.sel(trial_type=trial_type, channel=chan, chromo=chromo_name).values
                                 
-                                # Set style based on chromophore
-                                if chromo_name == 'HbO':
-                                    linewidth = 2.5  # Thicker for HbO
-                                    alpha = 0.9      # More opaque
-                                    marker_style = ''  # No marker for HbO
-                                    marker_size = 0
-                                else:  # HbR
-                                    linewidth = 1.5  # Thinner for HbR
-                                    alpha = 0.8      # Slightly more transparent
-                                    marker_style = 'o' if marker else ''  # Add small markers for HbR
-                                    marker_size = 3
+                                # Get line style for this chromophore
+                                chromo_line_style = chromo_ls.get(chromo_name, '-')
+                                
+                                # Combine stimulus line style with chromophore style
+                                # For multiple stimuli, vary the dash pattern
+                                if len(trial_types) == 1:
+                                    combined_line_style = chromo_line_style
+                                else:
+                                    # Use chromophore style as base, add stimulus distinction if needed
+                                    combined_line_style = line_style if chromo_line_style == '-' else chromo_line_style
+                                
+                                # Set consistent styling
+                                linewidth = 2.0
+                                alpha = 0.85
+                                marker_style = marker if marker else ''
+                                marker_size = 3 if marker else 0
                                 
                                 # Plot with label showing channel, trial type, and chromo
                                 label = f"{chan}-{chromo_name}-{trial_type}"
                                 self._dataTimeSeries_ax.plot(
                                     hrf_time,
                                     hrf_values,
-                                    ls=line_style,
+                                    ls=combined_line_style,
                                     marker=marker_style,
                                     markersize=marker_size,
                                     markevery=5,  # Only show markers every 5 points to avoid clutter
