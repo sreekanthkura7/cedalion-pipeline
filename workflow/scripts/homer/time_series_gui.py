@@ -1576,6 +1576,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         print(f"Loading HRF data from: {hrf_file_path}")
                         hrf_data = xr.open_dataset(hrf_file_path)
                         print(f"HRF data loaded successfully")
+                        if hasattr(hrf_data, 'data_vars'):
+                            print(f"HRF data variables: {list(hrf_data.data_vars.keys())}")
                     else:
                         print(f"No HRF file found at: {hrf_file_path}")
             except Exception as e:
@@ -3937,31 +3939,40 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         blockaverage = value
                         print(f"Found xarray data in key: {key}")
                         break
+        
+        # Extract standard error from total_stderr (group average) or mse_t (individual HRF)
+        # This runs for all hrf_data types (Dataset, DataArray, or dict)
+        print(f"DEBUG: Checking for stderr variables in hrf_data")
+        print(f"DEBUG: hrf_data type: {type(hrf_data)}")
+        if hasattr(hrf_data, 'data_vars'):
+            print(f"DEBUG: Available data_vars: {list(hrf_data.data_vars.keys())}")
+        if 'total_stderr' in hrf_data:
+            # Group average data has total_stderr already computed
+            stderr = hrf_data['total_stderr']
+            print(f"Found total_stderr with dims: {stderr.dims}")
+        elif 'mse_t' in hrf_data:
+            # Individual HRF data has mse_t which we convert to stderr
+            import numpy as np
+            mse_t = hrf_data['mse_t']
+            print(f"Found mse_t with dims: {mse_t.dims}")
             
-            # Extract standard error from total_stderr (group average) or mse_t (individual HRF)
-            if 'total_stderr' in hrf_data:
-                # Group average data has total_stderr already computed
-                stderr = hrf_data['total_stderr']
-                print(f"Found total_stderr with dims: {stderr.dims}")
-            elif 'mse_t' in hrf_data:
-                # Individual HRF data has mse_t which we convert to stderr
-                import numpy as np
-                mse_t = hrf_data['mse_t']
-                print(f"Found mse_t with dims: {mse_t.dims}")
-                
-                # Compute standard error: stderr = sqrt(mse_t)
-                stderr = np.sqrt(mse_t)
-                
-                # Transpose to match blockaverage dimensions if needed
-                # blockaverage dims: ('trial_type', 'channel', 'chromo', 'time')
-                # mse_t dims: ('trial_type', 'time', 'channel', 'chromo')
-                if blockaverage is not None and hasattr(blockaverage, 'dims'):
-                    target_dims = blockaverage.dims
-                    if stderr.dims != target_dims:
-                        stderr = stderr.transpose(*target_dims)
-                        print(f"Transposed stderr to dims: {stderr.dims}")
-                
-                print(f"Standard error computed and ready to pass to plot_probe")
+            # Compute standard error: stderr = sqrt(mse_t)
+            stderr = np.sqrt(mse_t)
+            
+            # Transpose to match blockaverage dimensions if needed
+            # blockaverage dims: ('trial_type', 'channel', 'chromo', 'time')
+            # mse_t dims: ('trial_type', 'time', 'channel', 'chromo')
+            if blockaverage is not None and hasattr(blockaverage, 'dims'):
+                target_dims = blockaverage.dims
+                if stderr.dims != target_dims:
+                    stderr = stderr.transpose(*target_dims)
+                    print(f"Transposed stderr to dims: {stderr.dims}")
+            
+            print(f"Standard error computed and ready to pass to plot_probe")
+        else:
+            print(f"DEBUG: No stderr data found - neither 'total_stderr' nor 'mse_t' in hrf_data")
+            if hasattr(hrf_data, 'data_vars'):
+                print(f"DEBUG: Available variables were: {list(hrf_data.data_vars.keys())}")
         
         if blockaverage is None or not hasattr(blockaverage, 'dims'):
             self.statbar.showMessage("Invalid HRF data format")
@@ -3985,6 +3996,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             print(f"Launching with HRF data dims: {blockaverage.dims}")
             if stderr is not None:
                 print(f"Passing stderr with dims: {stderr.dims}")
+            else:
+                print(f"WARNING: No stderr data to pass to plot_probe_gui")
             
             # Create the Plot Probe GUI as a child window (don't create new QApplication)
             self.plot_probe_window = _MAIN_GUI(
