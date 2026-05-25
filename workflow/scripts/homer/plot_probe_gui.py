@@ -152,26 +152,31 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         prune_channels_layout.addWidget(QtWidgets.QLabel("SS fade thresh"), 2, 0)
         prune_channels_layout.addWidget(self.ssfade, 2, 1)
         
-        # Add T-stat threshold (only if standard error is provided)
-        if self.stderr is not None:
-            self.tstat_threshold = QtWidgets.QDoubleSpinBox()
-            self.tstat_threshold.setValue(0)  # Default: no threshold
-            self.tstat_threshold.setRange(-100, 100)
-            self.tstat_threshold.setSingleStep(0.5)
-            self.tstat_threshold.setDecimals(2)
-            self.tstat_threshold.editingFinished.connect(self._tstat_threshold_changed)
-            prune_channels_layout.addWidget(QtWidgets.QLabel("T-stat"), 3, 0)
-            prune_channels_layout.addWidget(self.tstat_threshold, 3, 1)
-            
-            # Add std_err threshold
-            self.stderr_threshold = QtWidgets.QDoubleSpinBox()
-            self.stderr_threshold.setRange(0, 1e10)  # Set range first
-            self.stderr_threshold.setValue(1e6)  # Default: 1e6
-            self.stderr_threshold.setSingleStep(0.1)
-            self.stderr_threshold.setDecimals(8)
-            self.stderr_threshold.editingFinished.connect(self._stderr_threshold_changed)
-            prune_channels_layout.addWidget(QtWidgets.QLabel("std_err"), 4, 0)
-            prune_channels_layout.addWidget(self.stderr_threshold, 4, 1)
+        # Add T-stat threshold (always visible, disabled if no stderr data)
+        self.tstat_threshold = QtWidgets.QDoubleSpinBox()
+        self.tstat_threshold.setValue(0)  # Default: no threshold
+        self.tstat_threshold.setRange(-100, 100)
+        self.tstat_threshold.setSingleStep(0.5)
+        self.tstat_threshold.setDecimals(2)
+        self.tstat_threshold.editingFinished.connect(self._tstat_threshold_changed)
+        prune_channels_layout.addWidget(QtWidgets.QLabel("T-stat"), 3, 0)
+        prune_channels_layout.addWidget(self.tstat_threshold, 3, 1)
+        
+        # Add std_err threshold (always visible, disabled if no stderr data)
+        self.stderr_threshold = QtWidgets.QDoubleSpinBox()
+        self.stderr_threshold.setRange(0, 1e10)  # Set range first
+        self.stderr_threshold.setValue(1e6)  # Default: 1e6
+        self.stderr_threshold.setSingleStep(0.1)
+        self.stderr_threshold.setDecimals(8)
+        self.stderr_threshold.editingFinished.connect(self._stderr_threshold_changed)
+        prune_channels_layout.addWidget(QtWidgets.QLabel("std_err"), 4, 0)
+        prune_channels_layout.addWidget(self.stderr_threshold, 4, 1)
+        
+        # Initially disable both - will be enabled in _init_calc() based on data availability
+        self.tstat_threshold.setEnabled(False)
+        self.stderr_threshold.setEnabled(False)
+        self.tstat_threshold.setToolTip("T-statistic data not available")
+        self.stderr_threshold.setToolTip("Standard error data not available")
 
         ## Add Prune Channels
         control_panel_layout.addWidget(prune_channels)
@@ -332,6 +337,23 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.tstat = None
             self.tstat_max = None
             self.stderr_mean = None
+        
+        # Enable/disable controls based on data availability
+        if hasattr(self, 'tstat_threshold'):
+            if self.tstat_max is not None:
+                self.tstat_threshold.setEnabled(True)
+                self.tstat_threshold.setToolTip("Set threshold for t-statistic pruning")
+            else:
+                self.tstat_threshold.setEnabled(False)
+                self.tstat_threshold.setToolTip("T-statistic data not available")
+        
+        if hasattr(self, 'stderr_threshold'):
+            if self.stderr_mean is not None:
+                self.stderr_threshold.setEnabled(True)
+                self.stderr_threshold.setToolTip("Set threshold for standard error pruning")
+            else:
+                self.stderr_threshold.setEnabled(False)
+                self.stderr_threshold.setToolTip("Standard error data not available")
 
         self.conditions.clear()
         self.opt2circ.setChecked(False)

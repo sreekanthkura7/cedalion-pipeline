@@ -1807,16 +1807,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Note: HbO/HbR selection uses the wavelength/chromophore list widget below (wv)
         # No separate checkboxes needed for HRF view
-        
-        # Add file type filter for color coding
-        hrf_checkbox_layout.addWidget(QtWidgets.QLabel("  |  Color by:"))
-        self.color_file_type = QtWidgets.QComboBox()
-        self.color_file_type.addItems(["Preprocessing", "HRF Estimate", "Image Recon", "All (any complete)"])
-        self.color_file_type.setCurrentText("Preprocessing")
-        self.color_file_type.setToolTip("Choose which file type to check for color coding status")
-        self.color_file_type.currentTextChanged.connect(self._color_file_type_changed)
-        self.color_file_type.setMinimumWidth(150)
-        hrf_checkbox_layout.addWidget(self.color_file_type)
+        # Color coding is automatic: Preprocessing when HRF view off, HRF Estimate when HRF view on
         
         # Add separator
         separator = QtWidgets.QFrame()
@@ -3886,23 +3877,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Save GUI state after HRF group average change
             self._save_gui_state()
     
-    def _color_file_type_changed(self):
-        """Handle changes to color file type filter - update all file colors"""
-        print(f"DEBUG: Color file type changed to: {self.color_file_type.currentText()}")
-        if self.snakemake_config:
-            self._update_all_file_colors()
-            # Force comboboxes to repaint
-            if hasattr(self, 'subj'):
-                self.subj.repaint()
-                if self.subj.view():
-                    self.subj.view().repaint()
-            if hasattr(self, 'run'):
-                self.run.repaint()
-                if self.run.view():
-                    self.run.view().repaint()
-            self._update_combobox_selection_colors()
-            self.statbar.showMessage(f"Color coding now based on: {self.color_file_type.currentText()}")
-    
     def _launch_plot_probe(self):
         """Launch the Plot Probe GUI with current HRF data"""
         print("Launching Plot Probe GUI...")
@@ -4007,7 +3981,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Import and launch the plot_probe_gui
         try:
-            from cedalion.vis.misc.plot_probe_gui import _MAIN_GUI
+            from plot_probe_gui import _MAIN_GUI
             print(f"Launching with HRF data dims: {blockaverage.dims}")
             if stderr is not None:
                 print(f"Passing stderr with dims: {stderr.dims}")
@@ -6394,7 +6368,49 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Apply subject color once
             self._apply_subject_color_to_combobox(subject, subject_color)
         
+        # Update image reconstruction button color based on current selection
+        self._update_image_recon_button_color()
+        
         return files_changed_to_black
+    
+    def _update_image_recon_button_color(self):
+        """Update the Image Reconstruction button text color based on file status"""
+        if not hasattr(self, 'image_recon_btn'):
+            return
+        
+        # Get current selection
+        current_subject = self.subj.currentText() if hasattr(self, 'subj') else None
+        current_run = self.run.currentText() if hasattr(self, 'run') else None
+        
+        if not current_subject or not current_run or current_subject == "None" or current_run == "None":
+            # No selection, reset to default
+            self.image_recon_btn.setStyleSheet("")
+            return
+        
+        # Get the image recon file path for current selection
+        file_path = self._get_image_recon_file_path(current_subject, current_run)
+        
+        if not file_path or file_path not in self.current_scope_files:
+            # File not in scope, gray (use default styling)
+            self.image_recon_btn.setStyleSheet("color: gray;")
+            return
+        
+        # Get status info
+        status_info = self.current_scope_files[file_path]
+        status = status_info.get('status', '')
+        plan = status_info.get('plan', '')
+        is_up_to_date = (status == 'ok' and 'no update' in plan.lower())
+        
+        # Determine color
+        if is_up_to_date:
+            color = 'black'  # File complete
+        elif self._is_pipeline_running():
+            color = 'orange'  # Pipeline working on it
+        else:
+            color = 'red'  # Needs work, pipeline not running
+        
+        # Apply color to button text
+        self.image_recon_btn.setStyleSheet(f"color: {color}; font-weight: bold;")
     
     def _is_pipeline_running(self):
         """Check if the Snakemake pipeline is currently running"""
@@ -6433,8 +6449,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         - Non-selected file, needs update: Red (needs work but skipping)
         - Gray: File not in GUI config at all
         """
-        # Determine which file(s) to check based on color_file_type selector
-        color_by = self.color_file_type.currentText() if hasattr(self, 'color_file_type') else "Preprocessing"
+        # Automatically determine color coding mode based on HRF view state
+        # When HRF view is active, check HRF estimate files; otherwise check preprocessing files
+        color_by = "HRF Estimate" if (hasattr(self, 'hrf_view') and self.hrf_view.isChecked()) else "Preprocessing"
         
         file_paths_to_check = []
         
@@ -6448,16 +6465,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             file_type = "image reconstruction"
             if file_path:
                 file_paths_to_check.append(file_path)
-        elif color_by == "All (any complete)":
-            # Check all three file types
-            file_type = "any (preprocess/HRF/image)"
-            for path in [
-                self._get_preprocessing_file_path(subject, run),
-                self._get_expected_file_path(subject, run),
-                self._get_image_recon_file_path(subject, run)
-            ]:
-                if path:
-                    file_paths_to_check.append(path)
         else:  # Default: "Preprocessing"
             file_path = self._get_preprocessing_file_path(subject, run)
             file_type = "preprocessing"
@@ -6470,39 +6477,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         if not file_paths_to_check:
             print(f"DEBUG: Could not determine {file_type} path(s), returning gray")
             return 'gray'
-        
-        # For "All" mode, check if ANY file is in scope and up-to-date
-        if color_by == "All (any complete)":
-            any_in_scope = False
-            any_up_to_date = False
-            any_needs_update = False
-            
-            for file_path in file_paths_to_check:
-                if file_path in self.current_scope_files:
-                    any_in_scope = True
-                    status_info = self.current_scope_files[file_path]
-                    status = status_info.get('status', '')
-                    plan = status_info.get('plan', '')
-                    is_up_to_date = (status == 'ok' and 'no update' in plan.lower())
-                    
-                    if is_up_to_date:
-                        any_up_to_date = True
-                    else:
-                        any_needs_update = True
-            
-            if not any_in_scope:
-                print(f"DEBUG: No files in current scope, returning gray")
-                return 'gray'
-            
-            if any_up_to_date:
-                print(f"DEBUG: At least one file up to date, returning black")
-                return 'black'
-            elif any_needs_update:
-                color = 'orange' if self._is_pipeline_running() else 'red'
-                print(f"DEBUG: All files need update, returning {color}")
-                return color
-            else:
-                return 'gray'
         
         # Single file mode - check the specific file
         file_path = file_paths_to_check[0]
@@ -6912,6 +6886,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 run_color = self.file_colors.get((current_subj, current_run))
                 if run_color:
                     self.run.setStyleSheet(f"QComboBox {{ color: {color_map[run_color]}; }}")
+        
+        # Update image reconstruction button color for current selection
+        self._update_image_recon_button_color()
     
     def _apply_color_to_combobox(self, subject, run, color):
         """Apply color styling to combobox items for subject/run"""
