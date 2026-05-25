@@ -367,10 +367,49 @@ class SnakemakeSetupDialog(QtWidgets.QDialog):
         self.setLayout(layout)
     
     def _browse_snakefile(self):
+        # Try to determine a smart starting directory
+        start_dir = ""
+        
+        # Method 1: If we already have a snakefile path, start in that directory
+        if self.snakefile_edit.text():
+            existing_path = self.snakefile_edit.text()
+            if os.path.exists(existing_path):
+                start_dir = os.path.dirname(existing_path)
+        
+        # Method 2: Try to find workflow folder relative to this script
+        if not start_dir:
+            try:
+                # Get the directory of the current file (time_series_gui.py)
+                # Should be: cedalion-pipeline/workflow/scripts/homer/
+                current_file_dir = os.path.dirname(os.path.abspath(__file__))
+                
+                # Go up two levels to get to workflow folder
+                # ../ -> scripts, ../ -> workflow
+                workflow_dir = os.path.normpath(os.path.join(current_file_dir, '..', '..'))
+                
+                # Verify this is actually a workflow folder by checking for common files
+                if os.path.exists(workflow_dir) and os.path.isdir(workflow_dir):
+                    # Check if directory name is 'workflow' or contains a Snakefile
+                    dir_name = os.path.basename(workflow_dir)
+                    has_snakefile = any(
+                        os.path.exists(os.path.join(workflow_dir, f)) 
+                        for f in ['Snakefile', 'snakefile', 'Snakefile.smk']
+                    )
+                    
+                    if dir_name.lower() == 'workflow' or has_snakefile:
+                        start_dir = workflow_dir
+                        print(f"Auto-detected workflow directory: {start_dir}")
+            except Exception as e:
+                print(f"Could not auto-detect workflow directory: {e}")
+        
+        # Fallback to home directory if no smart start found
+        if not start_dir:
+            start_dir = os.path.expanduser("~")
+        
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             "Select Snakefile",
-            "",
+            start_dir,
             "Snakefile (Snakefile);;All Files (*)"
         )
         if file_path:
@@ -378,10 +417,45 @@ class SnakemakeSetupDialog(QtWidgets.QDialog):
             self._auto_detect_config(file_path)
     
     def _browse_config(self):
+        # Try to determine a smart starting directory
+        start_dir = ""
+        
+        # Method 1: If we have a snakefile path, look for config folder there
+        snakefile_path = self.snakefile_edit.text()
+        if snakefile_path and os.path.exists(snakefile_path):
+            snakefile_dir = os.path.dirname(snakefile_path)
+            config_dir = os.path.join(snakefile_dir, 'config')
+            if os.path.exists(config_dir) and os.path.isdir(config_dir):
+                start_dir = config_dir
+                print(f"Starting config browser in: {start_dir}")
+        
+        # Method 2: If we already have a config path, start in that directory
+        if not start_dir and self.config_edit.text():
+            existing_path = self.config_edit.text()
+            if os.path.exists(existing_path):
+                start_dir = os.path.dirname(existing_path)
+        
+        # Method 3: Try to find workflow/config folder relative to this script
+        if not start_dir:
+            try:
+                current_file_dir = os.path.dirname(os.path.abspath(__file__))
+                workflow_dir = os.path.normpath(os.path.join(current_file_dir, '..', '..'))
+                config_dir = os.path.join(workflow_dir, 'config')
+                
+                if os.path.exists(config_dir) and os.path.isdir(config_dir):
+                    start_dir = config_dir
+                    print(f"Auto-detected config directory: {start_dir}")
+            except Exception as e:
+                print(f"Could not auto-detect config directory: {e}")
+        
+        # Fallback to home directory if no smart start found
+        if not start_dir:
+            start_dir = os.path.expanduser("~")
+        
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             "Select Config File",
-            "",
+            start_dir,
             "YAML Files (*.yaml *.yml);;All Files (*)"
         )
         if file_path:
@@ -5213,12 +5287,20 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
 
         # Set axis limits if preserve zoom is enabled or if we have non-default xlim
         if self.preserve_axis_zoom.isChecked():
-            if xxlim[0] != 0 or xxlim[1] != 1:
+            # If we have explicitly preserved limits, always restore them
+            if self.preserved_xlim is not None:
                 self._dataTimeSeries_ax.set_xlim(xxlim)
-            if yylim[0] != 0 or yylim[1] != 1:
+            elif xxlim[0] != 0 or xxlim[1] != 1:
+                # Fallback: restore current limits if they're not default
+                self._dataTimeSeries_ax.set_xlim(xxlim)
+            
+            if self.preserved_ylim is not None:
+                self._dataTimeSeries_ax.set_ylim(yylim)
+            elif yylim[0] != 0 or yylim[1] != 1:
+                # Fallback: restore current limits if they're not default
                 self._dataTimeSeries_ax.set_ylim(yylim)
         else:
-            # Original behavior - only preserve xlim
+            # Original behavior - only preserve xlim if not default
             if xxlim[0] != 0 or xxlim[1] != 1:
                 self._dataTimeSeries_ax.set_xlim(xxlim)
 
