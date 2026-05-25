@@ -1,21 +1,25 @@
 dataset:
-  root_dir: "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data"
-  derivatives_subfolder: "test_0422_groupavg/test_1"
-  #subject: ["586", "587", "592", "618", "621"] 
-  subjects_to_exclude: []
-  task: ["BS"]                    
-  num_runs: 3    # !!! SHOULD we just have snakemake parse thru the number of runs? what if a sub only has 2 runs but all others have 3
+  root_dir: "/projectnb/nphfnirs/s/users/shannon/Data/test_data_cedalion_smk/data" # where your BIDS data lives
+  derivatives_subfolder: "test_new_ced"  # where to save results. Saves as: derivatives/cedalion/YOURSTRING
+  #subject: ["586", "587", "592", "618", "621"]  # subject IDs you want to include. DO NOT INCL EXCLUDED SUBS
+  subjects_to_exclude: ["587", "618"]  # list of subjects you want to EXCLUDE.
+  task: ["BS"]  # task list. Currently only do ONE task at a time.                  
+  num_runs: 3
+
+  # runs_to_exclude:   # FIXME: add this option to scripts
+  #   "586": ["01"]  # dict of runs to exclude for each subject.
+  #   "621": ["02"]
 
 preprocess:
   steps:
-    median_filter:
+    median_filter:  # process your data with a median filter
       enable: true
       order: 1
     prune:
-      enable: false  # false, does not update timeseries but does return mask  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
+      enable: false  # false, does not update timeseries but does return mask. false=weighted group average  # FIXME: have enable mean enable (mask created or not) and then add another flag for controlling timeseries
       snr_thresh: 5
       sd_thresh_min: "1 mm"
-      sd_thresh_max: "45 mm"
+      sd_thresh_max: "45 mm"  
       amp_thresh_min: 1e-3
       amp_thresh_max: 0.84
       perc_time_clean_thresh: 0.6  # for sci x psp mask
@@ -26,55 +30,55 @@ preprocess:
       flag_use_psp: false
     int2od:
       enable: true
-    tddr:
+    # INSERT MA CORRECTION IF ANY HERE
+    tddr:  # NOTE: can do other MA techniques instead. ie. splineSG, PCA_recurse, wavelet, 
       enable: false
-    freq_filter:
+    freq_filter:  # filter your data with a bandpass, hpf, or lpf
       enable: false
-      fmin: "0.01 Hz"
-      fmax: "0.5 Hz"
+      fmin: "0.01 Hz"  # set to 0 if you want a LPF
+      fmax: "0.5 Hz"   # set to 0 if you want a HPF
     od2conc:
       enable: true
     plot_dqr:
       enable: true
 
 hrf_estimation:   #  !!! make these constants instead?
-  rec_str: "conc"   
-  stim_lst: ["right", "left"]  #  make this in script instead of adding?  # auto but then add exlusion
-  t_pre: "2 second"   # can we make this a lsit for diff trial types for GLM
-  t_post: "10 second"
+  rec_str: "conc"   # MUST BE 'conc' OR 'od_02'    - what you want to block average
+  stim_lst: ["left", "right"]  # list of stims from events.tsv you want to estimate the HRF of
+  t_pre: "2 second"   # time before stim onset you want to model  #!!! can we make this a list for diff trial types for GLM
+  t_post: "10 second" # time after stim onset you want to model
   GLM:        
    enable: true  # if true do GLM, false do block averaging
-   do_drift: "legendre" 
+   do_drift: 'legendre'  # Options: None, 'polynomial', 'legendre'
+   drift_order: 3 
    do_short_sep: true
-   drift_order: 3
    distance_threshold: "20 mm"
    short_channel_method : "mean"
-   noise_model: "ar_irls" 
+   noise_model: "ar_irls"    #  ols, rls, wls, ar_irls, gls, glsar
    basis_func: "gaussian_kernels"
    basis_func_params:
     t_delta: "1 second"
     t_std: "1 second"
 
+
 groupaverage:
-  mse:   # conc
-   mse_amp_thresh: 1e-3 #1.1e-6 # amp vals below this thresh where we do not trust the variance estimate
+  mse:    # for changing bad values IDed in prune channels mask. change vals for conc or od
    mse_val_for_bad_data: "1e7 micromolar**2"
    mse_min_thresh: "1e0 micromolar**2"
    hrf_val: "0 micromolar"
   # mse:  # od
-  #  mse_amp_thresh: 1e-3 #1.1e-6
   #  mse_val_for_bad_data: 1e1
   #  mse_min_thresh: 1e-6
-  #  hrf_val: 0
+  #  blockaverage_val: 0
    
    
-image_recon:
+image_recon:   # need to create sensitivity matrix first. Not included here yet.
   generate_sensitivity: 
     sub_folder: 'shannon'  # optional subfolder in /derivatives/cedalion/{folder}/probe/fw  # probe must be placed in folder/probe
     forward_model: "MCX"  # MCX or NIRFASTER
-    head_model: 'icbm152'  # colin27, icbm152
-  mag:
-    enable: true
+    head_model: 'icbm152'
+  mag:   
+    enable: true  # perform image recon on magnitude of HRF averaged between time window (t_win)
     t_win: [5, 8]
   recon_mode: "mua2conc"
   Cmeas: 
@@ -88,18 +92,27 @@ image_recon:
     threshold_scalp: "5 mm"
     sigma_brain: "1 mm"
     sigma_scalp: "5 mm"
-  noise_est_method: "posterior"
-  mse:  # od
+  noise_est_method: "posterior"   # posterior or measurement are options
+  mse:    # od   - for changing bad values IDed in prune channels mask
     mse_val_for_bad_data: 1e1
     mse_min_thresh: 1e-6
     hrf_val: 0
   alpha_meas: 1e4
-  alpha_spatial: 1e-3   #   (indirect: WITH SB= 1e-2, NO SB = 1e-3)
+  alpha_spatial: 1e-3
   spectrum: 'prahl'
-  lambda_spatial_depth: 1e-6   
+  lambda_spatial_depth: 1e-6   # old val for od 1.6e-09  , now 1e-6 for both od and conc 
+  plot_image:    
+    enable: false
+    flag_hbo_list: ['hbo', 'hbr']
+    flag_brain_list: ['brain', 'scalp']  # 'brain', 'scalp' - if you want to plot either
+    flag_img_list:  ['mag', 'tstat', 'noise']
 
-  # plot_image:    
-  #   enable: false
-  #   flag_hbo_list: ['hbo', 'hbr']
-  #   flag_brain_list: ['brain', 'scalp']  # 'brain', 'scalp' - if you want to plot either
-  #   flag_img_list:  ['mag', 'tstat', 'noise']
+
+
+  
+  
+  
+  
+  
+  
+  
