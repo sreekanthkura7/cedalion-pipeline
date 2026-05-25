@@ -6494,12 +6494,23 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         # Single file mode - check the specific file
         file_path = file_paths_to_check[0]
         
-        # Check if file is in current scope (user's config)
+        # First check if file exists on disk
+        import os
+        file_exists = os.path.exists(file_path)
+        print(f"DEBUG: File exists on disk? {file_exists}")
+        
+        # If file exists on disk, it's up-to-date (black)
+        # We don't need Snakemake to tell us a file that exists is complete
+        if file_exists:
+            print(f"DEBUG: File exists, returning black")
+            return 'black'
+        
+        # File doesn't exist yet - check if it's in the pipeline scope
         in_current_scope = file_path in self.current_scope_files
         print(f"DEBUG: In current scope? {in_current_scope}")
         
         if not in_current_scope:
-            # Not in current config → gray (don't care about status)
+            # Not in current config and doesn't exist → gray (out of scope)
             print(f"DEBUG: Not in current scope, returning gray")
             return 'gray'
         
