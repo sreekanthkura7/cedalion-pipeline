@@ -6103,14 +6103,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             return False
     
     def _start_pipeline_monitoring(self):
-        """Start the QTimer to monitor file updates every 30 seconds"""
+        """Start the QTimer to monitor file updates every 5 seconds"""
         if self.pipeline_monitor_timer is None:
             self.pipeline_monitor_timer = QtCore.QTimer(self)
             self.pipeline_monitor_timer.timeout.connect(self._check_file_updates)
         
-        # Check immediately, then every 30 seconds
+        # Check immediately, then every 5 seconds
         self._check_file_updates()
-        self.pipeline_monitor_timer.start(30000)  # 30 seconds
+        self.pipeline_monitor_timer.start(5000)  # 5 seconds
         
         self.statbar.showMessage("Pipeline monitoring active...")
     
@@ -6232,7 +6232,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 self._mark_updated_files_for_reload(files_changed_to_black)
                 
                 # Auto-reload if currently displayed file just completed
-                # NOTE: This only triggers ONCE when file status changes to black, not every 30 seconds
+                # NOTE: This only triggers ONCE when file status changes to black, not every 5 seconds
                 # files_changed_to_black only contains files that changed THIS update cycle
                 current_subj = self.subj.currentText() if hasattr(self, 'subj') else None
                 current_run = self.run.currentText() if hasattr(self, 'run') else None
