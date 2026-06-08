@@ -3650,6 +3650,29 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
 
         self._optode_ax.clear()
 
+        # First, draw channel lines (bottom layer, zorder=1)
+        # Drawing them first ensures they're underneath everything else
+        self.channel_lines = []
+        for i_ch in range(self.no_channels):
+            si = self.src_idx[i_ch]
+            di = self.det_idx[i_ch]
+
+            line, = self._optode_ax.plot(
+                [self.sx[si], self.dx[di]],
+                [self.sy[si], self.dy[di]],
+                "-",
+                color=[0.8, 0.8, 0.8],
+                zorder=1,
+                picker=True,  # Enable picking but with very precise detection
+                pickradius=1,  # Very small radius for precise line selection
+                linewidth=2  # Make lines slightly thicker for easier clicking
+            )
+            # Store the line with its channel index
+            line.channel_index = i_ch
+            self.channel_lines.append(line)
+
+        # Second, draw the invisible picker scatter (middle layer, zorder=10)
+        # This is drawn on top of lines to prioritize optode clicks
         self.picker = self._optode_ax.scatter(
             self.sdx,
             self.sdy,
@@ -3658,6 +3681,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             picker=6,   # Reduced from 8 for more precise clicking
         )
 
+        # Third, draw visible optode circles (top layer, zorder=15)
         self.optodes = self._optode_ax.scatter(
             self.sdx,
             self.sdy,
@@ -3666,6 +3690,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             visible=False,
         )
 
+        # Finally, draw optode labels (highest layer, zorder=20)
         for idx, source in enumerate(self.sPos.label):
             self.src_label[idx] = self._optode_ax.text(
                 self.sx[idx],
@@ -3691,26 +3716,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 zorder=20,  # Highest z-order so text is always visible
                 clip_on=True,
             )
-
-        # Store channel lines for picking
-        self.channel_lines = []
-        for i_ch in range(self.no_channels):
-            si = self.src_idx[i_ch]
-            di = self.det_idx[i_ch]
-
-            line, = self._optode_ax.plot(
-                [self.sx[si], self.dx[di]],
-                [self.sy[si], self.dy[di]],
-                "-",
-                color=[0.8, 0.8, 0.8],
-                zorder=1,
-                picker=True,  # Enable picking but with very precise detection
-                pickradius=1,  # Very small radius for precise line selection
-                linewidth=2  # Make lines slightly thicker for easier clicking
-            )
-            # Store the line with its channel index
-            line.channel_index = i_ch
-            self.channel_lines.append(line)
 
         self.optodes_drawn = True
 

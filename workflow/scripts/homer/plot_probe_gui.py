@@ -744,41 +744,22 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         t0 = time.time()
         self._ax.clear()
 
-        # Plot optode dots transparently
-        (self.src_optodes,) = self._ax.plot(
-            self.sx, self.sy, "o", markersize=5, color=[1, 0, 0, 0]
-        )
-        (self.det_optodes,) = self._ax.plot(
-            self.dx, self.dy, "o", markersize=5, color=[0, 0, 1, 0]
-        )
+        # First, plot measurement lines (lowest layer, zorder=0)
+        print("Plotting measurement lines!")
+        for i_ch in range(self.channels):
+            si = self.src_idx[i_ch]
+            di = self.det_idx[i_ch]
 
-        # Plot optode labels
-        for idx2, source in enumerate(self.sPos.label):
-            self.src_label[idx2] = self._ax.text(
-                self.sx[idx2],
-                self.sy[idx2],
-                f"{source.values}",
-                fontsize=8,
-                ha="center",
-                va="center",
-                clip_on=True,
+            (self.meas_line[i_ch],) = self._ax.plot(
+                [self.sx[si], self.dx[di]],
+                [self.sy[si], self.dy[di]],
+                "--",
+                color=[0.8, 0.8, 0.8, 0],
+                zorder=0,
             )
-            self.src_label[idx2].set_color([1, 0, 0, 1])
 
-        for idx2, detector in enumerate(self.dPos.label):
-            self.det_label[idx2] = self._ax.text(
-                self.dx[idx2],
-                self.dy[idx2],
-                f"{detector.values}",
-                fontsize=8,
-                ha="center",
-                va="center",
-                clip_on=True,
-            )
-            self.det_label[idx2].set_color([0, 0, 1, 1])
-
+        # Second, plot HRFs (middle layer, zorder=1-2)
         print("Plotting HRFs!")
-
         for i_con in range(self.trial_types):
             for i_ch in range(self.channels):
                 for i_col in range(self.chromophores):
@@ -796,17 +777,42 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         color=self.chrom[i_col] + [0],
                     )
 
-        for i_ch in range(self.channels):
-            si = self.src_idx[i_ch]
-            di = self.det_idx[i_ch]
+        # Third, plot optode dots and labels (top layer, zorder=10)
+        # This ensures optodes are always on top and easy to click
+        print("Plotting optode markers and labels!")
+        (self.src_optodes,) = self._ax.plot(
+            self.sx, self.sy, "o", markersize=5, color=[1, 0, 0, 0], zorder=10
+        )
+        (self.det_optodes,) = self._ax.plot(
+            self.dx, self.dy, "o", markersize=5, color=[0, 0, 1, 0], zorder=10
+        )
 
-            (self.meas_line[i_ch],) = self._ax.plot(
-                [self.sx[si], self.dx[di]],
-                [self.sy[si], self.dy[di]],
-                "--",
-                color=[0.8, 0.8, 0.8, 0],
-                zorder=0,
+        # Plot optode labels (also on top layer)
+        for idx2, source in enumerate(self.sPos.label):
+            self.src_label[idx2] = self._ax.text(
+                self.sx[idx2],
+                self.sy[idx2],
+                f"{source.values}",
+                fontsize=8,
+                ha="center",
+                va="center",
+                clip_on=True,
+                zorder=10,
             )
+            self.src_label[idx2].set_color([1, 0, 0, 1])
+
+        for idx2, detector in enumerate(self.dPos.label):
+            self.det_label[idx2] = self._ax.text(
+                self.dx[idx2],
+                self.dy[idx2],
+                f"{detector.values}",
+                fontsize=8,
+                ha="center",
+                va="center",
+                clip_on=True,
+                zorder=10,
+            )
+            self.det_label[idx2].set_color([0, 0, 1, 1])
 
         self._ax.set_aspect("equal")
         self._ax.axis("off")
