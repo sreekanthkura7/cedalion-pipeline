@@ -1965,6 +1965,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.preserve_axis_zoom.setToolTip("Keep current axis zoom when switching measurements, subjects, or wavelengths")
         self.preserve_axis_zoom.stateChanged.connect(self._preserve_zoom_changed)
         opt_layout.addWidget(self.preserve_axis_zoom)
+        
+        ## Create Auto Scale Y-axis Checkbox (sub-option of Preserve Axis Zoom)
+        self.auto_scale_y = QtWidgets.QCheckBox("Auto scale Y-axis")
+        self.auto_scale_y.setChecked(False)
+        self.auto_scale_y.setEnabled(False)  # Disabled by default until preserve zoom is checked
+        self.auto_scale_y.setToolTip("Preserve X-axis zoom but auto-scale Y-axis for better amplitude visibility")
+        self.auto_scale_y.stateChanged.connect(self._save_gui_state)
+        opt_layout.addWidget(self.auto_scale_y)
 
         ## Create Stimulus Selection Dropdown with checkboxes
         stim_label = QtWidgets.QLabel("Stimuli:")
@@ -2797,6 +2805,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if hasattr(self, 'preserve_axis_zoom'):
                 gui_state['preserve_axis_zoom'] = bool(self.preserve_axis_zoom.isChecked())
             
+            # Auto scale Y-axis checkbox state
+            if hasattr(self, 'auto_scale_y'):
+                gui_state['auto_scale_y'] = bool(self.auto_scale_y.isChecked())
+            
             # View optodes as circles checkbox state
             if hasattr(self, 'opt2circ'):
                 gui_state['opt2circ'] = bool(self.opt2circ.isChecked())
@@ -3004,7 +3016,17 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     self.preserve_axis_zoom.blockSignals(True)
                     self.preserve_axis_zoom.setChecked(gui_state['preserve_axis_zoom'])
                     self.preserve_axis_zoom.blockSignals(False)
+                    # Enable/disable auto_scale_y based on preserve_axis_zoom state
+                    if hasattr(self, 'auto_scale_y'):
+                        self.auto_scale_y.setEnabled(gui_state['preserve_axis_zoom'])
                     print(f"  Restored preserve_axis_zoom: {gui_state['preserve_axis_zoom']}")
+                
+                # Restore auto scale Y-axis state
+                if 'auto_scale_y' in gui_state and hasattr(self, 'auto_scale_y'):
+                    self.auto_scale_y.blockSignals(True)
+                    self.auto_scale_y.setChecked(gui_state['auto_scale_y'])
+                    self.auto_scale_y.blockSignals(False)
+                    print(f"  Restored auto_scale_y: {gui_state['auto_scale_y']}")
                 
                 # Restore view optodes as circles state
                 if 'opt2circ' in gui_state and hasattr(self, 'opt2circ'):
@@ -3866,11 +3888,15 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Save current axis limits when checkbox is enabled
             self.preserved_xlim = self._dataTimeSeries_ax.get_xlim()
             self.preserved_ylim = self._dataTimeSeries_ax.get_ylim()
+            # Enable the auto scale Y-axis option
+            self.auto_scale_y.setEnabled(True)
             print(f"Preserve zoom enabled. Saved limits: x={self.preserved_xlim}, y={self.preserved_ylim}")
         else:
             # Clear saved limits when checkbox is disabled
             self.preserved_xlim = None
             self.preserved_ylim = None
+            # Disable the auto scale Y-axis option
+            self.auto_scale_y.setEnabled(False)
             print("Preserve zoom disabled. Cleared saved limits.")
         
         # Save GUI state after preserve zoom setting change
@@ -5024,7 +5050,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         if self.preserve_axis_zoom.isChecked():
             if self.preserved_xlim is not None:
                 xxlim = self.preserved_xlim
-            if self.preserved_ylim is not None:
+            # Only preserve Y-axis if auto_scale_y is NOT checked
+            if self.preserved_ylim is not None and not self.auto_scale_y.isChecked():
                 yylim = self.preserved_ylim
 
         self._dataTimeSeries_ax.clear()
@@ -5299,11 +5326,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 # Fallback: restore current limits if they're not default
                 self._dataTimeSeries_ax.set_xlim(xxlim)
             
-            if self.preserved_ylim is not None:
-                self._dataTimeSeries_ax.set_ylim(yylim)
-            elif yylim[0] != 0 or yylim[1] != 1:
-                # Fallback: restore current limits if they're not default
-                self._dataTimeSeries_ax.set_ylim(yylim)
+            # Only restore Y limits if auto_scale_y is NOT checked
+            if not self.auto_scale_y.isChecked():
+                if self.preserved_ylim is not None:
+                    self._dataTimeSeries_ax.set_ylim(yylim)
+                elif yylim[0] != 0 or yylim[1] != 1:
+                    # Fallback: restore current limits if they're not default
+                    self._dataTimeSeries_ax.set_ylim(yylim)
+            # If auto_scale_y is checked, don't set ylim - let matplotlib auto-scale
         else:
             # Original behavior - only preserve xlim if not default
             if xxlim[0] != 0 or xxlim[1] != 1:
