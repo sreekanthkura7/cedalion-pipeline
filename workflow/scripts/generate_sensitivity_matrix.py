@@ -36,7 +36,9 @@ def generate_Adot_func(cfg_Adot, root_dir, sub, head_model, save_dir_Adot):
     fluence_fname = os.path.join(save_dir_fl, "fluence.h5")
 
     if cfg_Adot['forward_model'] == "MCX":
-        fwm.compute_fluence_mcx(fluence_fname)
+        fwm.compute_fluence_mcx(fluence_fname, cuda=True)
+    elif cfg_Adot['forward_model'] == "MCXCL":
+        fwm.compute_fluence_mcx(fluence_fname, cuda=False)
     elif cfg_Adot['forward_model'] == "NIRFASTER":
         fwm.compute_fluence_nirfaster(fluence_fname)
 

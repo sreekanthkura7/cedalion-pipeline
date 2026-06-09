@@ -75,7 +75,7 @@ groupaverage:
 image_recon:   # need to create sensitivity matrix first. Not included here yet.
   generate_sensitivity: 
     sub_folder: 'shannon'  # optional subfolder in /derivatives/cedalion/{folder}/probe/fw  # probe must be placed in folder/probe
-    forward_model: "MCX"  # MCX or NIRFASTER
+    forward_model: "MCX"  # MCX or MCXCL or NIRFASTER
     head_model: 'icbm152'
   mag:   
     enable: true  # perform image recon on magnitude of HRF averaged between time window (t_win)
