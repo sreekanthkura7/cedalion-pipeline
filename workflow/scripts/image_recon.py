@@ -271,106 +271,106 @@ def img_recon_func(cfg_img_recon, cfg_hrf, file_name, Adot_path, out, SB=[], roo
     
     # #%% build and save plots
 
-    # if cfg_img_recon['plot_image']['enable']:
-    #     save_dir_tmp = os.path.join(root_dir, derivatives_subfolder, 'cedalion', 'plots', 'image_recon')
-    #     os.makedirs(save_dir_tmp, exist_ok=True)
+    if cfg_img_recon['plot_image']['enable']:
+        save_dir_tmp = os.path.join(root_dir, derivatives_subfolder, 'cedalion', 'plots', 'image_recon')
+        os.makedirs(save_dir_tmp, exist_ok=True)
 
-    #     folder_name = out.removeprefix("Xs_").removesuffix(".nc")
-    #     suffix = out.split("Xs_")[1].split("_BS")[0]
+        folder_name = out.removeprefix("Xs_").removesuffix(".nc")
+        suffix = out.split("Xs_")[1].split("_BS")[0]
 
-    #     intensity = np.log10(Adot[:,:,0].sum('channel')) # make non-sensitive vertices NaN / gray in image
-    #     mask = intensity > -2
-    #     sensitivity_mask = mask.drop_vars('wavelength')
+        intensity = np.log10(Adot[:,:,0].sum('channel')) # make non-sensitive vertices NaN / gray in image
+        mask = intensity > -2
+        sensitivity_mask = mask.drop_vars('wavelength')
 
-    #     all_trial_X_stderr = np.sqrt(all_trial_X_mse)
-    #     all_trial_X_tstat = all_trial_Xs / all_trial_X_stderr
+        all_trial_X_stderr = np.sqrt(all_trial_X_mse)
+        all_trial_X_tstat = all_trial_Xs / all_trial_X_stderr
 
-    #     all_trial_Xs_plot = all_trial_Xs.where(sensitivity_mask)
-    #     all_trial_X_stderr              = all_trial_X_stderr.where(sensitivity_mask)
-    #     all_trial_X_tstat               = all_trial_X_tstat.where(sensitivity_mask)
+        all_trial_Xs_plot = all_trial_Xs.where(sensitivity_mask)
+        all_trial_X_stderr              = all_trial_X_stderr.where(sensitivity_mask)
+        all_trial_X_tstat               = all_trial_X_tstat.where(sensitivity_mask)
 
-    #     plot_img = cfg_img_recon['plot_image']
+        plot_img = cfg_img_recon['plot_image']
 
-    #     flag_hbo_list = plot_img['flag_hbo_list']  
-    #     flag_brain_list = plot_img['flag_brain_list']
-    #     flag_img_list = plot_img['flag_img_list'] 
+        flag_hbo_list = plot_img['flag_hbo_list']  
+        flag_brain_list = plot_img['flag_brain_list']
+        flag_img_list = plot_img['flag_img_list'] 
             
-    #     flag_condition_list = cfg_hrf['stim_lst']
+        flag_condition_list = cfg_hrf['stim_lst']
         
-    #     for flag_hbo in flag_hbo_list:
+        for flag_hbo in flag_hbo_list:
             
-    #         for flag_brain in flag_brain_list: 
+            for flag_brain in flag_brain_list: 
                 
-    #             for flag_condition in flag_condition_list:
+                for flag_condition in flag_condition_list:
                     
-    #                 for flag_img in flag_img_list:
+                    for flag_img in flag_img_list:
                         
-    #                     if flag_hbo in ['hbo', 'HbO']:
-    #                         title_str = flag_condition + ' ' + 'HbO'
-    #                         hbx_brain_scalp = 'hbo'
-    #                     else:
-    #                         title_str = flag_condition + ' ' + 'HbR'
-    #                         hbx_brain_scalp = 'hbr'
+                        if flag_hbo in ['hbo', 'HbO']:
+                            title_str = flag_condition + ' ' + 'HbO'
+                            hbx_brain_scalp = 'hbo'
+                        else:
+                            title_str = flag_condition + ' ' + 'HbR'
+                            hbx_brain_scalp = 'hbr'
                         
-    #                     if flag_brain in ['brain', 'Brain']:
-    #                         title_str = title_str + ' brain'
-    #                         hbx_brain_scalp = hbx_brain_scalp + '_brain'
-    #                     else:
-    #                         title_str = title_str + ' scalp'
-    #                         hbx_brain_scalp = hbx_brain_scalp + '_scalp'
+                        if flag_brain in ['brain', 'Brain']:
+                            title_str = title_str + ' brain'
+                            hbx_brain_scalp = hbx_brain_scalp + '_brain'
+                        else:
+                            title_str = title_str + ' scalp'
+                            hbx_brain_scalp = hbx_brain_scalp + '_scalp'
                         
-    #                     if len(flag_condition_list) > 1:
-    #                         if flag_img == 'tstat':
-    #                             foo_img = all_trial_X_tstat.sel(trial_type=flag_condition).copy()
-    #                             title_str = title_str + ' t-stat'
-    #                         elif flag_img == 'mag':
-    #                             foo_img = all_trial_Xs_plot.sel(trial_type=flag_condition).copy()
-    #                             title_str = title_str + ' magnitude'
-    #                         elif flag_img == 'noise':
-    #                             foo_img = all_trial_X_stderr.sel(trial_type=flag_condition).copy()
-    #                             title_str = title_str + ' noise'
-    #                     else:
-    #                         if flag_img == 'tstat':
-    #                             foo_img = all_trial_X_tstat.copy()
-    #                             title_str = title_str + ' t-stat'
-    #                         elif flag_img == 'mag':
-    #                             foo_img = all_trial_Xs_plot.copy()
-    #                             title_str = title_str + ' magnitude'
-    #                         elif flag_img == 'noise':
-    #                             foo_img = all_trial_X_stderr.copy()
-    #                             title_str = title_str + ' noise'
+                        if len(flag_condition_list) > 1:
+                            if flag_img == 'tstat':
+                                foo_img = all_trial_X_tstat.sel(trial_type=flag_condition).copy()
+                                title_str = title_str + ' t-stat'
+                            elif flag_img == 'mag':
+                                foo_img = all_trial_Xs_plot.sel(trial_type=flag_condition).copy()
+                                title_str = title_str + ' magnitude'
+                            elif flag_img == 'noise':
+                                foo_img = all_trial_X_stderr.sel(trial_type=flag_condition).copy()
+                                title_str = title_str + ' noise'
+                        else:
+                            if flag_img == 'tstat':
+                                foo_img = all_trial_X_tstat.copy()
+                                title_str = title_str + ' t-stat'
+                            elif flag_img == 'mag':
+                                foo_img = all_trial_Xs_plot.copy()
+                                title_str = title_str + ' magnitude'
+                            elif flag_img == 'noise':
+                                foo_img = all_trial_X_stderr.copy()
+                                title_str = title_str + ' noise'
                 
-    #                     if 'reltime' in foo_img.dims:
-    #                         foo_img = foo_img.rename({"reltime": "time"})
-    #                         foo_img = foo_img.transpose("vertex", "chromo", "time")
-    #                     clim = (-foo_img.sel(chromo='HbO').max(), foo_img.sel(chromo='HbO').max())
+                        if 'reltime' in foo_img.dims:
+                            foo_img = foo_img.rename({"reltime": "time"})
+                            foo_img = foo_img.transpose("vertex", "chromo", "time")
+                        clim = (-foo_img.sel(chromo='HbO').max(), foo_img.sel(chromo='HbO').max())
 
-    #                     filename = f'IMG_{flag_condition}_{flag_img}_{hbx_brain_scalp}'
-    #                     # create overall folder for current image recon params 
-    #                     save_dir_tmp_ful = os.path.join(save_dir_tmp, folder_name)
-    #                     os.makedirs(save_dir_tmp_ful, exist_ok=True) 
+                        filename = f'IMG_{flag_condition}_{flag_img}_{hbx_brain_scalp}'
+                        # create overall folder for current image recon params 
+                        save_dir_tmp_ful = os.path.join(save_dir_tmp, folder_name)
+                        os.makedirs(save_dir_tmp_ful, exist_ok=True) 
 
 
-    #                     save_dir_full = os.path.join(save_dir_tmp_ful, suffix)
-    #                     os.makedirs(save_dir_full, exist_ok=True)
-    #                     save_file_path = os.path.join(save_dir_full, filename )
+                        save_dir_full = os.path.join(save_dir_tmp_ful, suffix)
+                        os.makedirs(save_dir_full, exist_ok=True)
+                        save_file_path = os.path.join(save_dir_full, filename )
         
-    #                     print('plotting: ', filename)
-    #                     image_recon_multi_view(   #FIXME: add off_screen option to this function
-    #                         foo_img,  # time series data; can be 2D (static) or 3D (dynamic)
-    #                         head,
-    #                         cmap='jet',
-    #                         clim=clim,
-    #                         view_type=hbx_brain_scalp,
-    #                         title_str=f'{filename} / uM',
-    #                         filename=save_file_path,
-    #                         SAVE=True,
-    #                         #time_range=(foo_img.time.values[0],foo_img.time.values[-1],0.5)*units.s,
-    #                         fps=12,
-    #                         geo3d_plot = None, #  geo3d_plot
-    #                         wdw_size = (1024, 768)
-    #                     )
-    #                  #              
+                        print('plotting: ', filename)
+                        image_recon_multi_view(   #FIXME: add off_screen option to this function
+                            foo_img,  # time series data; can be 2D (static) or 3D (dynamic)
+                            head,
+                            cmap='jet',
+                            clim=clim,
+                            view_type=hbx_brain_scalp,
+                            title_str=f'{filename} / uM',
+                            filename=save_file_path,
+                            SAVE=True,
+                            #time_range=(foo_img.time.values[0],foo_img.time.values[-1],0.5)*units.s,
+                            fps=12,
+                            geo3d_plot = None, #  geo3d_plot
+                            wdw_size = (1024, 768)
+                        )
+                     #              
                      
     
 
