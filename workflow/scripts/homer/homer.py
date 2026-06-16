@@ -153,10 +153,6 @@ for subject_folder in os.listdir(root_dir):
                         pkl_filename = filename.replace('.snirf', '_preprocessed.snirf')
                         pkl_path = os.path.join(preprocessed_path, subject_folder, pkl_filename)
                         
-                        print(f"DEBUG homer.py: SNIRF file: {filename}")
-                        print(f"DEBUG homer.py: PKL filename: {pkl_filename}")
-                        print(f"DEBUG homer.py: PKL path: {pkl_path}")
-                        print(f"DEBUG homer.py: PKL exists: {os.path.exists(pkl_path) if preprocessed_path else False}")
                         
                         # Check if pkl exists
                         pkl_exists = os.path.exists(pkl_path) if preprocessed_path else False

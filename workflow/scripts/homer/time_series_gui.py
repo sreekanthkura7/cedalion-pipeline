@@ -129,10 +129,8 @@ class ConfigEditorDialog(QtWidgets.QDialog):
                 # Always set a tooltip, even if empty, so users know hover works
                 if tooltip:
                     label.setToolTip(tooltip)
-                    print(f"DEBUG: Set tooltip for {key}: {tooltip}")
                 else:
                     label.setToolTip("(no description available)")
-                    print(f"DEBUG: No tooltip for {key} (tried: {key}, {full_key})")
                 
                 self.form_layout.addRow(label, widget)
     
@@ -222,7 +220,6 @@ class ConfigEditorDialog(QtWidgets.QDialog):
                             s = f"sub-{s}"
                         excluded_subjects.add(s)
             
-            print(f"DEBUG: Parsed excluded_subjects: {excluded_subjects}")
             
             # Calculate matching subjects
             all_subjects = set(self.subjects)
@@ -576,12 +573,10 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
         for cmd in ['conda', 'conda.bat', 'conda.exe']:
             if shutil.which(cmd):
                 conda_cmd = cmd
-                print(f"DEBUG: Found conda in PATH: {conda_cmd}")
                 break
         
         # If not in PATH, try common installation locations
         if not conda_cmd:
-            print("DEBUG: conda not in PATH, checking common installation locations...")
             possible_paths = []
             
             # Windows common locations
@@ -615,21 +610,16 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
             for path in possible_paths:
                 if os.path.isfile(path):
                     conda_cmd = path
-                    print(f"DEBUG: Found conda at: {conda_cmd}")
                     break
         
         if not conda_cmd:
             error_msg = "conda command not found in PATH or common installation locations."
             print(f"ERROR: {error_msg}")
-            print("DEBUG: Checked for: conda, conda.bat, conda.exe in PATH")
-            print(f"DEBUG: Checked {len(possible_paths) if 'possible_paths' in locals() else 0} common installation paths")
-            print(f"DEBUG: System PATH: {os.environ.get('PATH', 'N/A')[:200]}...")
             print("HINT: If conda works in terminal, try running the GUI from an Anaconda/Miniconda prompt")
             # Return fallback defaults
             return ["cedalion_snakemake", "cedalion_snakemake_dev"]
         
         try:
-            print(f"DEBUG: Using conda command: {conda_cmd}")
             result = subprocess.run(
                 [conda_cmd, 'env', 'list'],
                 capture_output=True,
@@ -637,11 +627,6 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
                 timeout=10,
                 shell=(sys.platform == 'win32')  # Use shell on Windows for .bat files
             )
-            
-            print(f"DEBUG: conda env list return code: {result.returncode}")
-            print(f"DEBUG: conda env list stdout length: {len(result.stdout)}")
-            if result.stderr:
-                print(f"DEBUG: conda env list stderr: {result.stderr[:200]}")
             
             if result.returncode == 0:
                 # Parse output to extract environment names
@@ -656,10 +641,6 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
                             # Skip base environment marker (*)
                             if env_name != '*':
                                 environments.append(env_name)
-                
-                print(f"DEBUG: Found {len(environments)} conda environments")
-                if environments:
-                    print(f"DEBUG: Environments: {environments[:5]}...")  # Show first 5
             else:
                 error_msg = f"conda env list failed with return code {result.returncode}"
                 print(f"ERROR: {error_msg}")
@@ -690,7 +671,6 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
         # Check CONDA_DEFAULT_ENV environment variable
         current_env = os.environ.get('CONDA_DEFAULT_ENV', None)
         if current_env:
-            print(f"DEBUG: Current conda environment: {current_env}")
             return current_env
         
         # Fallback: try to detect from CONDA_PREFIX
@@ -698,10 +678,8 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
         if conda_prefix:
             # Extract environment name from path (last folder)
             env_name = os.path.basename(conda_prefix)
-            print(f"DEBUG: Current conda environment from CONDA_PREFIX: {env_name}")
             return env_name
         
-        print("DEBUG: No active conda environment detected")
         return None
 
     def init_ui(self):
@@ -811,13 +789,10 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
         current_env = self._get_current_conda_environment()
         if current_env and current_env in conda_envs:
             self.env_combo.setCurrentText(current_env)
-            print(f"DEBUG: Set default environment to current: {current_env}")
         elif "cedalion_snakemake" in conda_envs:
             self.env_combo.setCurrentText("cedalion_snakemake")
-            print(f"DEBUG: Set default environment to cedalion_snakemake (current env not found)")
         else:
             self.env_combo.setCurrentIndex(0)
-            print(f"DEBUG: Set default environment to first in list")
         
         self.env_combo.setToolTip("Select conda environment to use for running Snakemake")
         env_layout.addWidget(self.env_combo)
@@ -1515,13 +1490,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         prepared['det_label_handles'] = [0] * len(prepared['dx'])
         
         # Get timeseries keys - combine from both sources if processed data exists
-        print(f"DEBUG _prepare_data: rec_processed type = {type(rec_processed)}")
-        print(f"DEBUG _prepare_data: rec_processed = {rec_processed}")
-        print(f"DEBUG _prepare_data: rec_amp.timeseries.keys() = {list(rec_amp.timeseries.keys())}")
         
         if rec_processed and hasattr(rec_processed, 'timeseries'):
             # Merge timeseries from processed data (od, conc) with amp from SNIRF
-            print(f"DEBUG: rec_processed has timeseries: {list(rec_processed.timeseries.keys())}")
             all_ts_keys = set(rec_amp.timeseries.keys())
             all_ts_keys.update(rec_processed.timeseries.keys())
             all_ts_keys.discard('amp')  # Remove amp from processed, use SNIRF version
@@ -1530,7 +1501,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Store processed rec for later access
             prepared['processed_rec'] = rec_processed
         else:
-            print(f"DEBUG: No processed data or no timeseries attribute, using only SNIRF timeseries")
             prepared['timeseries_keys'] = list(rec_amp.timeseries.keys())
             prepared['processed_rec'] = None
         
@@ -1575,9 +1545,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         snirf_path = file_info.get('snirf_path')
         pkl_path = file_info.get('pkl_path')
         
-        print(f"DEBUG: snirf_path = {snirf_path}")
-        print(f"DEBUG: pkl_path = {pkl_path}")
-        print(f"DEBUG: pkl_path exists = {pkl_path and os.path.exists(pkl_path)}")
         
         if not snirf_path:
             print(f"Error: No SNIRF path for {subj_key} - {run_key}")
@@ -2067,38 +2034,26 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
     def _get_data_directory(self):
         """Extract the data directory from file_map paths"""
         print("\n" + "="*60)
-        print("DEBUG: _get_data_directory() called")
-        print(f"DEBUG: file_map type: {type(self.file_map)}")
-        print(f"DEBUG: file_map empty: {not self.file_map}")
         
         # Try to get a file path from file_map
         if not self.file_map:
-            print("DEBUG: file_map is empty, returning cwd")
             return os.getcwd()
         
-        print(f"DEBUG: file_map has {len(self.file_map)} subjects")
         for subj, subj_dict in self.file_map.items():
-            print(f"DEBUG: Checking subject: {subj}")
-            print(f"DEBUG: Runs: {list(subj_dict.keys())}")
             for run, file_info in subj_dict.items():
-                print(f"DEBUG: Run {run}, file_info: {file_info}")
                 # Extract pkl_path from the dict
                 file_path = file_info.get('pkl_path') if isinstance(file_info, dict) else None
                 if file_path:
-                    print(f"DEBUG: Found file path: {file_path}")
                     # Extract the base path up to and including the main data directory
                     # Path structure: .../data_dir/derivatives/cedalion/...
                     # We want to get to the data_dir level
                     if 'derivatives' in file_path:
                         parts = file_path.split('derivatives')
-                        print(f"DEBUG: Split on 'derivatives': {parts}")
                         # The first part contains the data directory path
                         data_dir = parts[0].rstrip(os.sep).rstrip('/')
-                        print(f"DEBUG: Extracted data directory: {data_dir}")
                         print("="*60 + "\n")
                         return data_dir
         # Fallback to current directory if no paths found
-        print(f"DEBUG: No valid paths found in file_map, using cwd: {os.getcwd()}")
         print("="*60 + "\n")
         return os.getcwd()
     
@@ -2346,7 +2301,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 self.current_selection_task = task_match.group(1) if task_match else None
                 self.current_selection_run = run_match.group(1) if run_match else None
                 
-                print(f"DEBUG: Run on current selection only mode enabled")
                 print(f"  Selected: sub-{self.current_selection_subject}, task-{self.current_selection_task}, run-{self.current_selection_run}")
                 
                 # Create a temporary config file with overrides
@@ -2358,24 +2312,20 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         with open(config_path, 'r', encoding='utf-8') as f:
                             config_data = yaml.safe_load(f)
                         
-                        print(f"DEBUG: Creating temp config from: {config_path}")
                         
                         # Override task with single-item list
                         if task_match:
                             task_id = task_match.group(1)
                             config_data['dataset']['task'] = [task_id]
-                            print(f"DEBUG: Override task=['{task_id}']")
                         
                         # Override run with single-item list
                         if run_match:
                             run_id = run_match.group(1)
                             config_data['dataset']['run'] = [run_id]
-                            print(f"DEBUG: Override run=['{run_id}']")
                         
                         # Set run_list to match the single run (replaces num_runs approach)
                         if run_match:
                             config_data['dataset']['run_list'] = [run_id]
-                            print(f"DEBUG: Set run_list=['{run_id}']")
                         
                         # Set subjects_to_exclude to all subjects except the current one
                         if subject_match:
@@ -2394,7 +2344,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                                 # Exclude all subjects except current one
                                 subjects_to_exclude = [s for s in all_subjects if s != subject_id]
                                 config_data['dataset']['subjects_to_exclude'] = subjects_to_exclude
-                                print(f"DEBUG: Set subjects_to_exclude to exclude all except {subject_id}: {subjects_to_exclude}")
                         
                         # Write temporary config file
                         # Save in same directory as original config
@@ -2406,7 +2355,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         # Store original config path for monitoring
                         original_config_path = config_path
                         config_path = temp_config_path  # Use temp config for execution
-                        print(f"DEBUG: Created temp config at: {config_path}")
                         
                     except Exception as e:
                         print(f"ERROR: Config override failed: {e}")
@@ -2516,15 +2464,12 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         
                         # Check if there are actually files to process
                         if self.expected_pipeline_outputs:
-                            print(f"DEBUG: {len(self.expected_pipeline_outputs)} files need processing - will clear cache")
                             # Clear ALL cache ONLY if files need processing
                             # This ensures fresh data loads when files complete, but preserves cache if nothing to do
                             if self.cache:
-                                print(f"DEBUG: Clearing all cache ({len(self.cache)} entries) - files will be processed")
                                 self.cache.clear()
                                 self.statbar.showMessage(f"Starting pipeline - {len(self.expected_pipeline_outputs)} files to process")
                         else:
-                            print(f"DEBUG: No files need processing - keeping cache intact")
                             self.statbar.showMessage("All files already up-to-date - nothing to process")
                         
                         # Save pipeline status before starting
@@ -2562,9 +2507,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                                 time.sleep(2)  # Wait 2 seconds between attempts (total 10 seconds)
                                 snakemake_pid = self._find_snakemake_process_pid()
                                 if snakemake_pid:
-                                    print(f"DEBUG: Found snakemake PID={snakemake_pid} after {(attempt+1)*2} seconds")
                                     break
-                                print(f"DEBUG: Attempt {attempt+1}/5: No snakemake process found yet...")
                             
                             if snakemake_pid:
                                 self._store_pipeline_process_info(snakemake_pid)
@@ -3199,8 +3142,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
     def _edit_config_block(self, config_path, block_name, readonly_keys=None):
         """Load, edit, and save a specific block from config file"""
         try:
-            print(f"DEBUG: Checking for config file at: {config_path}")
-            print(f"DEBUG: File exists: {os.path.exists(config_path)}")
             # Check if file exists
             if not os.path.exists(config_path):
                 QtWidgets.QMessageBox.warning(
@@ -3322,7 +3263,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     field_comments[field_name] = pending_comment
                     pending_comment = None
         
-        print(f"DEBUG: Extracted comments for {block_name}: {field_comments}")
         return field_comments
     
     def _save_yaml_with_comments(self, config_path, full_config, original_lines, modified_block):
@@ -3576,7 +3516,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 self.hrf_available_stim_types = []
         elif hasattr(self, 'hrf_data') and self.hrf_data is not None:
             hrf_available = True
-            print(f"DEBUG: HRF data found, enabling checkbox")
             # Get available stimulus types from HRF data
             hrf_est = self.hrf_data.get('hrf_est')
             if hrf_est is not None and 'trial_type' in hrf_est.coords:
@@ -3585,7 +3524,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 self.hrf_available_stim_types = []
         else:
             self.hrf_available_stim_types = []
-            print(f"DEBUG: No HRF data found, checkbox will be disabled")
         
         if hrf_available:
             self.hrf_view.setEnabled(True)
@@ -3935,11 +3873,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 self.statbar.showMessage("No HRF data found for current selection")
                 return
             hrf_data = self.hrf_data
-            print(f"DEBUG: hrf_data type = {type(hrf_data)}")
             if isinstance(hrf_data, dict):
-                print(f"DEBUG: hrf_data is dict with keys: {list(hrf_data.keys())}")
+                pass
             elif hasattr(hrf_data, 'dims'):
-                print(f"DEBUG: hrf_data is xarray with dims: {hrf_data.dims}")
+                pass
         
         # Extract the actual xarray DataArray from the loaded data
         blockaverage = None
@@ -3980,10 +3917,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Extract standard error from total_stderr (group average) or mse_t (individual HRF)
         # This runs for all hrf_data types (Dataset, DataArray, or dict)
-        print(f"DEBUG: Checking for stderr variables in hrf_data")
-        print(f"DEBUG: hrf_data type: {type(hrf_data)}")
         if hasattr(hrf_data, 'data_vars'):
-            print(f"DEBUG: Available data_vars: {list(hrf_data.data_vars.keys())}")
+            pass
         if 'total_stderr' in hrf_data:
             # Group average data has total_stderr already computed
             stderr = hrf_data['total_stderr']
@@ -4007,10 +3942,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     print(f"Transposed stderr to dims: {stderr.dims}")
             
             print(f"Standard error computed and ready to pass to plot_probe")
-        else:
-            print(f"DEBUG: No stderr data found - neither 'total_stderr' nor 'mse_t' in hrf_data")
-            if hasattr(hrf_data, 'data_vars'):
-                print(f"DEBUG: Available variables were: {list(hrf_data.data_vars.keys())}")
         
         if blockaverage is None or not hasattr(blockaverage, 'dims'):
             self.statbar.showMessage("Invalid HRF data format")
@@ -4064,12 +3995,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         current_subject = self.subj.currentText() if self.subj.currentText() != "None" else None
         current_run = self.run.currentText() if self.run.currentText() != "None" else None
         
-        print(f"DEBUG: current_subject={current_subject}, current_run={current_run}")
         
         # Try to extract from the file_map using current subject/run
         if current_subject and current_run:
             file_info = self.file_map.get(current_subject, {}).get(current_run, {})
-            print(f"DEBUG: file_info keys: {list(file_info.keys()) if file_info else 'None'}")
             # Try different possible keys for the path
             pkl_path = None
             if file_info:
@@ -4078,7 +4007,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                            file_info.get('snirf_path'))
             
             if pkl_path:
-                print(f"DEBUG: pkl_path={pkl_path}")
                 task_match = re.search(r'task-([^_/\\]+)', pkl_path)
                 task_name = task_match.group(1) if task_match else None
                 
@@ -4090,11 +4018,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     base_path = derivatives_match.group(1)
                     # Normalize to forward slashes for consistency
                     base_path = base_path.replace('\\', '/')
-                    print(f"DEBUG: Extracted base_path={base_path}")
                 else:
-                    print(f"DEBUG: Could not extract base_path from pkl_path")
+                    pass
         
-        print(f"DEBUG: task_name={task_name}, base_path={base_path}")
         
         if not task_name or not base_path:
             msg = "Cannot determine task name or base path. Please load data first."
@@ -4106,14 +4032,12 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Check if image_results directory exists
         image_results_dir = os.path.join(base_path, 'image_results')
-        print(f"DEBUG: Checking for image_results at: {image_results_dir}")
         if not os.path.exists(image_results_dir):
             msg = f"Image results directory not found: {image_results_dir}"
             print(f"ERROR: {msg}")
             self.statbar.showMessage(msg)
             return
         
-        print("DEBUG: image_results directory exists, loading data...")
         
         # Load image reconstruction data
         img_data = None
@@ -4129,8 +4053,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 img_path = files[0]
                 print(f"Loading: {img_path}")
                 img_data = xr.open_dataset(img_path)
-                print(f"DEBUG: Successfully loaded group average data (netCDF)")
-                print(f"DEBUG: Dataset variables: {list(img_data.data_vars.keys())}")
             else:
                 msg = f"No group average image recon found for task {task_name}"
                 print(f"ERROR: {msg}")
@@ -4150,21 +4072,16 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             pattern = f"Xs_{current_subject}_{task_name}_*.nc"
             import glob
             files = glob.glob(os.path.join(subj_dir, pattern))
-            print(f"DEBUG: Found {len(files)} files matching pattern: {pattern}")
             if files:
                 img_path = files[0]
                 print(f"Loading: {img_path}")
                 img_data = xr.open_dataset(img_path)
-                print(f"DEBUG: Successfully loaded data from {img_path} (netCDF)")
-                print(f"DEBUG: Dataset variables: {list(img_data.data_vars.keys())}")
             else:
                 msg = f"No image recon found for {current_subject}, task {task_name}"
                 print(f"ERROR: {msg}")
                 self.statbar.showMessage(msg)
                 return
         
-        print(f"DEBUG: Checking img_data...")
-        print(f"DEBUG: img_data type: {type(img_data)}")
         
         # img_data is now an xarray Dataset (from netCDF)
         if img_data is None:
@@ -4187,17 +4104,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.statbar.showMessage(msg)
             return
         
-        print("DEBUG: img_data is valid, extracting HRF data...")
         # Extract the HRF estimate (try different variable names)
         if 'Xs' in img_data.data_vars:
             hrf_est = img_data['Xs']
-            print("DEBUG: Using 'Xs' variable (image reconstruction result)")
         elif 'hrf_est' in img_data.data_vars:
             hrf_est = img_data['hrf_est']
-            print("DEBUG: Using 'hrf_est' variable (individual subject data)")
         elif 'group_average' in img_data.data_vars:
             hrf_est = img_data['group_average']
-            print("DEBUG: Using 'group_average' variable (group average data)")
         else:
             error_msg = f"Invalid image reconstruction data format. Variables found: {list(img_data.data_vars.keys())}, but none of 'Xs', 'hrf_est', or 'group_average' found."
             print(f"ERROR: {error_msg}")
@@ -4208,7 +4121,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Determine if this is group average data
         is_group_avg = 'group_average' in img_data.data_vars
-        print(f"DEBUG: is_group_avg={is_group_avg}")
         
         # Extract time bounds if time dimension exists
         time_bounds = None
@@ -4217,9 +4129,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             min_time = float(time_values.min())
             max_time = float(time_values.max())
             time_bounds = (min_time, max_time)
-            print(f"DEBUG: time_bounds={time_bounds}")
         else:
-            print("DEBUG: No time dimension in data")
+            pass
         
         # Get available trial types
         if 'trial_type' in hrf_est.dims:
@@ -4227,8 +4138,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         else:
             trial_types = [task_name]
         
-        print(f"DEBUG: trial_types={trial_types}")
-        print("DEBUG: Creating ImageReconDialog...")
         
         # Create options dialog with group average flag and time bounds
         dialog = ImageReconDialog(trial_types, is_group_avg=is_group_avg, 
@@ -4241,13 +4150,11 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                                             img_path, current_subject, is_group_avg)
         
         dialog.launch_callback = launch_with_options
-        print("DEBUG: Showing dialog...")
         dialog.show()  # Non-modal, stays open
     
     def _perform_image_recon_launch(self, hrf_est, img_data, task_name, options, 
                                     img_path, current_subject, is_group_avg):
         """Perform the actual image reconstruction launch with the given options"""
-        print("DEBUG: Loading head model...")
         # Load head model from config or default to icbm152
         try:
             import cedalion.dot as dot
@@ -4257,12 +4164,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if self.snakemake_config and 'image_recon' in self.snakemake_config:
                 config_head_model = self.snakemake_config['image_recon'].get('head_model', 'ICBM152')
                 head_model = config_head_model.lower()  # Convert to lowercase
-                print(f"DEBUG: Using head model from config: {config_head_model} -> {head_model}")
             else:
-                print(f"DEBUG: No config found, using default: {head_model}")
+                pass
             
             head = dot.get_standard_headmodel(head_model)
-            print(f"DEBUG: Successfully loaded {head_model} head model")
         except Exception as e:
             msg = f"Error loading head model: {str(e)}"
             print(f"ERROR: {msg}")
@@ -4271,10 +4176,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.statbar.showMessage(msg)
             return
         
-        print("DEBUG: Preparing data for visualization...")
         # Extract selected metric
         metric = options.get('metric', 'mag')
-        print(f"DEBUG: Selected metric: {metric}")
         
         # Determine if this is group average data
         is_group_avg = 'group_average' in img_data.data_vars
@@ -4283,7 +4186,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         if metric == 'mag':
             # Use HRF magnitude (already loaded as hrf_est)
             data_to_viz = hrf_est
-            print(f"DEBUG: Using magnitude data")
             
         elif metric == 'std_err':
             # Calculate standard error: sqrt(mse)
@@ -4291,11 +4193,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if is_group_avg and 'total_stderr' in img_data.data_vars:
                 # Group average: sqrt(total_stderr)
                 data_to_viz = np.sqrt(img_data['total_stderr'])
-                print(f"DEBUG: Calculated std_err from total_stderr (group average)")
             elif 'mse_t' in img_data.data_vars:
                 # Subject level: sqrt(mse_t)
                 data_to_viz = np.sqrt(img_data['mse_t'])
-                print(f"DEBUG: Calculated std_err from mse_t (subject level)")
             else:
                 msg = "Cannot compute std_err: no mse data found"
                 print(f"ERROR: {msg}")
@@ -4308,13 +4208,11 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if is_group_avg and 'tstat' in img_data.data_vars:
                 # Group average: use stored t-stat
                 data_to_viz = img_data['tstat']
-                print(f"DEBUG: Using stored tstat (group average)")
             else:
                 # Subject level: calculate mag / std_err
                 if 'mse_t' in img_data.data_vars:
                     std_err = np.sqrt(img_data['mse_t'])
                     data_to_viz = hrf_est / std_err
-                    print(f"DEBUG: Calculated t_stat = mag / std_err (subject level)")
                 else:
                     msg = "Cannot compute t_stat: no mse data found"
                     print(f"ERROR: {msg}")
@@ -4326,7 +4224,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             import numpy as np
             if is_group_avg and 'mse_weighted_btwn_subjs' in img_data.data_vars:
                 data_to_viz = np.sqrt(img_data['mse_weighted_btwn_subjs'])
-                print(f"DEBUG: Calculated std_err_btwn_subjs from mse_weighted_btwn_subjs")
             else:
                 msg = "std_err_btwn_subjs is only available for group average data"
                 print(f"ERROR: {msg}")
@@ -4338,7 +4235,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             import numpy as np
             if is_group_avg and 'mse_mean_within_subj' in img_data.data_vars:
                 data_to_viz = np.sqrt(img_data['mse_mean_within_subj'])
-                print(f"DEBUG: Calculated std_err_within_subjs from mse_mean_within_subj")
             else:
                 msg = "std_err_within_subjs is only available for group average data"
                 print(f"ERROR: {msg}")
@@ -4353,18 +4249,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         # Select the chosen trial_type
         if 'trial_type' in data_to_viz.dims and len(data_to_viz.trial_type) > 0:
             X_ts = data_to_viz.sel(trial_type=options['trial_type'])
-            print(f"DEBUG: Selected trial_type: {options['trial_type']}, new shape: {X_ts.shape}")
         else:
             X_ts = data_to_viz
-            print(f"DEBUG: No trial_type selection needed")
         
         # Transpose to expected format: (vertex, chromo, time)
         expected_dims = ('vertex', 'chromo', 'time')
-        print(f"DEBUG: Current dims: {X_ts.dims}, expected: {expected_dims}")
         if X_ts.dims != expected_dims:
             try:
                 X_ts = X_ts.transpose(*expected_dims)
-                print(f"DEBUG: Transposed to dims: {X_ts.dims}")
             except Exception as e:
                 print(f"WARNING: Could not transpose to {expected_dims}: {e}")
         
@@ -4391,16 +4283,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 time_range = options.get('time_range')
                 if time_range:
                     start_time, end_time, _ = time_range
-                    print(f"DEBUG: Computing mean over time range: {start_time} to {end_time}")
                     # Select time slice
                     X_ts = X_ts.sel(time=slice(start_time, end_time))
-                    print(f"DEBUG: Selected time range, shape: {X_ts.shape}")
                 else:
-                    print("DEBUG: Computing mean over all available time points")
+                    pass
                 
                 # Compute mean over time dimension
                 X_ts = X_ts.mean(dim='time')
-                print(f"DEBUG: Computed mean over time, new shape: {X_ts.shape}, dims: {X_ts.dims}")
         
         # Extract chromophore from view_type (e.g., "hbo_brain" -> "HbO")
         view_type = options['view_type']
@@ -4413,7 +4302,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Calculate or use custom color limits
         if options['clim'] is None:
-            print(f"DEBUG: Auto-calculating color limits for {chromo} and metric {metric}...")
             import numpy as np
             
             # Check if metric should use symmetric or non-negative scaling
@@ -4422,15 +4310,12 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 # Symmetric color scale (e.g., -scl to +scl)
                 scl = np.percentile(np.abs(X_ts.sel(chromo=chromo)).values, 99)
                 clim = (-scl, scl)
-                print(f"DEBUG: Auto color limits for {chromo} (symmetric): {clim}")
             else:
                 # Non-negative color scale for std_err types (0 to +scl)
                 scl = np.percentile(X_ts.sel(chromo=chromo).values, 99)
                 clim = (0, scl)
-                print(f"DEBUG: Auto color limits for {chromo} (non-negative): {clim}")
         else:
             clim = options['clim']
-            print(f"DEBUG: Using custom color limits: {clim}")
         
         # Prepare time range
         time_range = options['time_range']
@@ -4456,11 +4341,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # Create directory structure
             os.makedirs(save_dir, exist_ok=True)
-            print(f"DEBUG: Created save directory: {save_dir}")
             
             # Prepend directory to user's filename
             full_filename = os.path.join(save_dir, options['filename'])
-            print(f"DEBUG: Full save path: {full_filename}")
             
             # For animation, convert time range to units
             try:
@@ -4468,7 +4351,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 import pint_xarray
                 # Convert to units
                 time_range = (time_range[0], time_range[1], time_range[2]) * pint.Unit('second')
-                print(f"DEBUG: Time range with units: {time_range}")
             except Exception as e:
                 print(f"WARNING: Could not create time range with units: {e}")
                 time_range = None
@@ -4476,15 +4358,12 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # For static display, time_range is not used (either warned earlier or mean already computed)
             full_filename = None
             time_range = None
-            print("DEBUG: Static display mode - no save, time_range not used")
         
         # Launch the image reconstruction viewer
-        print(f"DEBUG: Launching {'multi-view' if options['multi_view'] else 'single-view'} mode...")
         try:
             # Determine title string
             if options['title_str'] is not None:
                 title_str = options['title_str']
-                print(f"DEBUG: Using custom title: {title_str}")
             else:
                 # Auto-generate title based on metric
                 metric_labels = {
@@ -4498,21 +4377,18 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 title_str = f'{metric_label} - {task_name}'
                 if is_group_avg:
                     title_str += ' (Group Average)'
-                print(f"DEBUG: Using auto-generated title: {title_str}")
             
             # Check if geo3d data is available
             geo3d_plot = None
             if options['show_geo3d'] and 'geo3d' in img_data.data_vars:
                 geo3d_plot = img_data['geo3d']
-                print("DEBUG: geo3d data available and will be plotted")
             else:
-                print("DEBUG: No geo3d data or option disabled")
+                pass
             
             if options['multi_view']:
                 # Multi-view mode: show all 6 views
                 from cedalion.vis.anatomy import image_recon_multi_view
                 
-                print(f"DEBUG: Calling image_recon_multi_view with:")
                 print(f"  - X_ts shape: {X_ts.shape}, dims: {X_ts.dims}")
                 print(f"  - view_type: {options['view_type']}")
                 print(f"  - cmap: {options['cmap']}")
@@ -4548,7 +4424,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         geo3d_plot=geo3d_plot,
                         wdw_size=options['wdw_size']
                     )
-                    print("DEBUG: image_recon_multi_view returned successfully!")
                     
                     if SAVE:
                         self.statbar.showMessage(f"Saved to: {full_filename}")
@@ -4560,7 +4435,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 # Single-view mode: show one view at specified position
                 from cedalion.vis.anatomy import image_recon
                 
-                print(f"DEBUG: Calling image_recon with:")
                 print(f"  - X_ts shape: {X_ts.shape}, dims: {X_ts.dims}")
                 print(f"  - view_type: {options['view_type']}")
                 print(f"  - view_position: {options['view_position']}")
@@ -4607,7 +4481,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     else:
                         p0.show()
                     
-                    print("DEBUG: image_recon single-view completed successfully!")
                 finally:
                     if saving_msg is not None:
                         saving_msg.close()
@@ -4818,7 +4691,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             setattr(self, key, value)
 
         print(f"Loaded data for Subject: {subj_key}, Run: {run_key}")
-        print(f"DEBUG: hrf_data available: {hasattr(self, 'hrf_data') and self.hrf_data is not None}")
         
         # Enable image recon button if we have data
         self.image_recon_btn.setEnabled(True)
@@ -5617,7 +5489,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Normalize to forward slashes for comparison (Windows command lines often mix slashes)
             config_path_normalized = config_path.replace('\\', '/')
             
-            print(f"DEBUG PID search: Looking for config path: {config_path_normalized}")
             
             snakemake_procs = []
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -5639,14 +5510,12 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         
                         # Check if our normalized config path is in normalized cmdline
                         if config_path_normalized in cmdline_normalized:
-                            print(f"DEBUG PID search: ✓ Config path MATCHED! PID={proc.info['pid']}")
                             return proc.info['pid']
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
             
-            print(f"DEBUG PID search: Found {len(snakemake_procs)} snakemake processes but none matched config")
             if snakemake_procs:
-                print(f"DEBUG PID search: First snakemake command: {snakemake_procs[0][1][:300]}")
+                pass
             return None
         except Exception as e:
             print(f"Error finding snakemake process: {str(e)}")
@@ -5664,7 +5533,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.pipeline_status['process_pid'] = pid
             self.pipeline_status['process_start_time'] = proc.create_time()
             
-            print(f"DEBUG: Stored pipeline process info - PID={pid}, start_time={proc.create_time()}")
             
             # Save to homer.config immediately
             derivatives_dir = os.path.dirname(self.snakemake_config_path)
@@ -5799,7 +5667,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             else:
                 cmd = ['snakemake', '-s', snakefile_path, '--configfile', config_path, '--nolock', '--summary', target_rule]
             
-            print(f"DEBUG: Running summary command: {' '.join(cmd)}")
 
             
             # Run the summary command
@@ -5810,9 +5677,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 timeout=30
             )
             
-            print(f"DEBUG: Summary exit code: {result.returncode}")
-            print(f"DEBUG: Summary stdout length: {len(result.stdout)}")
-            print(f"DEBUG: Summary stderr length: {len(result.stderr)}")
             
             if result.returncode != 0:
                 print(f"ERROR: Summary command failed")
@@ -5852,9 +5716,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         'plan': plan
                     }
             
-            print(f"DEBUG: Summary parsed {len(file_status_map)} files")
             if file_status_map:
-                print("DEBUG: Sample file statuses:")
                 for f, info in list(file_status_map.items())[:3]:
                     print(f"  {os.path.basename(f)}: status={info['status']}, plan={info['plan']}")
             
@@ -5889,8 +5751,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 'completed_outputs': []
             }
             
-            print(f"DEBUG: Saving pipeline status - last_run_time={current_time}")
-            print(f"DEBUG: Expected outputs: {len(self.expected_pipeline_outputs)} files")
             
             # Save to homer.config
             self._save_homer_config(
@@ -5902,7 +5762,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             self.pipeline_status = pipeline_status
             self.completed_pipeline_outputs = set()  # Reset completed outputs
-            print(f"DEBUG: Pipeline status saved and set in memory")
             
         except Exception as e:
             print(f"Warning: Could not save pipeline status: {str(e)}")
@@ -5932,20 +5791,15 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         return
                 
                 self.pipeline_status = homer_config.get('pipeline_status', {})
-                print(f"DEBUG: Restored pipeline_status: {self.pipeline_status}")
-                print(f"DEBUG: Restored pipeline_status: {self.pipeline_status}")
                 
                 # Restore expected and completed outputs
                 self.expected_pipeline_outputs = set(self.pipeline_status.get('expected_outputs', []))
                 self.completed_pipeline_outputs = set(self.pipeline_status.get('completed_outputs', []))
-                print(f"DEBUG: Restored {len(self.expected_pipeline_outputs)} expected outputs")
-                print(f"DEBUG: Restored {len(self.completed_pipeline_outputs)} completed outputs")
                 
                 # Get current file status from summary
                 if self.snakefile_path and self.snakemake_config_path:
                     # Use the same target rule that was used to start the pipeline
                     target_rule = self.pipeline_status.get('target_rule', 'all_default')
-                    print(f"DEBUG: Running summary with target_rule={target_rule} to get current file status...")
                     self.file_status_map = self._run_snakemake_summary(
                         self.snakefile_path,
                         self.snakemake_config_path,
@@ -5962,10 +5816,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 if self.pipeline_status.get('status') == 'running':
                     # Validate the stored process is still running
                     if self._is_stored_pipeline_running():
-                        print("DEBUG: Stored pipeline process is still running, resuming monitoring")
                         self._start_pipeline_monitoring()
                     else:
-                        print("DEBUG: Stored pipeline process no longer running, updating status")
                         # Pipeline finished while GUI was closed
                         self.pipeline_status['status'] = 'completed'
                         self.pipeline_status['completed_time'] = datetime.now().isoformat()
@@ -5987,10 +5839,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         stored_start_time = self.pipeline_status.get('process_start_time')
         
         if not stored_pid:
-            print("DEBUG _is_stored_pipeline_running: No stored PID found")
             return False
         
-        print(f"DEBUG _is_stored_pipeline_running: Checking PID={stored_pid}")
         
         try:
             import psutil
@@ -5999,39 +5849,33 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if psutil.pid_exists(stored_pid):
                 proc = psutil.Process(stored_pid)
                 proc_name = proc.name()
-                print(f"DEBUG _is_stored_pipeline_running: PID={stored_pid} exists, name={proc_name}")
                 
                 # Verify it's the same process by comparing start time
                 # (PIDs can be reused after process dies)
                 if stored_start_time:
                     actual_start_time = proc.create_time()
                     time_diff = abs(actual_start_time - stored_start_time)
-                    print(f"DEBUG _is_stored_pipeline_running: Start time diff={time_diff:.2f}s")
                     if time_diff < 1.0:  # Within 1 second
                         # Verify it's actually a snakemake process
                         cmdline = ' '.join(proc.cmdline()).lower()
                         has_snakemake = 'snakemake' in cmdline
-                        print(f"DEBUG _is_stored_pipeline_running: Has 'snakemake' in cmdline: {has_snakemake}")
                         if has_snakemake:
-                            print(f"DEBUG _is_stored_pipeline_running: ✓ Pipeline process validated as running")
                             return True
                         else:
-                            print(f"DEBUG _is_stored_pipeline_running: PID={stored_pid} exists but is not snakemake (PID reused)")
+                            pass
                     else:
-                        print(f"DEBUG _is_stored_pipeline_running: PID={stored_pid} exists but start time mismatch (PID reused)")
+                        pass
                 else:
                     # No start time stored, just check if it's snakemake
                     cmdline = ' '.join(proc.cmdline()).lower()
                     if 'snakemake' in cmdline:
-                        print(f"DEBUG _is_stored_pipeline_running: ✓ Snakemake found (no start time check)")
                         return True
             else:
-                print(f"DEBUG _is_stored_pipeline_running: PID={stored_pid} does not exist")
+                pass
                 
             return False
             
         except psutil.NoSuchProcess:
-            print(f"DEBUG _is_stored_pipeline_running: Process PID={stored_pid} no longer exists (NoSuchProcess)")
             return False
         except Exception as e:
             print(f"ERROR _is_stored_pipeline_running: {str(e)}")
@@ -6058,7 +5902,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Cancel and clean up any running summary worker
         if self.summary_worker and self.summary_worker.isRunning():
-            print("DEBUG: Canceling running summary worker...")
             self.summary_worker.cancel()
             self.summary_worker.wait(3000)  # Wait up to 3 seconds for thread to finish
             if self.summary_worker.isRunning():
@@ -6069,21 +5912,17 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
     
     def _check_file_updates(self):
         """Start background summary check to monitor pipeline progress"""
-        print("DEBUG: _check_file_updates() called")
         
         if not self.snakemake_config_path:
-            print("DEBUG: No snakemake_config_path, returning")
             return
         
         # Skip updates if pipeline is not running
         if self.pipeline_status.get('status') != 'running':
-            print("DEBUG: Pipeline not running, stopping monitoring")
             self._stop_pipeline_monitoring()
             return
         
         # Don't start new worker if one is already running
         if self.summary_worker and self.summary_worker.isRunning():
-            print("DEBUG: Summary worker still running, skipping this check")
             return
         
         try:
@@ -6092,9 +5931,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             monitor_config = getattr(self, '_actual_config_used', self.snakemake_config_path)
             
             if self.run_current_only_mode:
-                print(f"DEBUG: Monitoring with temp config (selected file only): {monitor_config}")
+                pass
             else:
-                print(f"DEBUG: Monitoring with current config (full pipeline)")
+                pass
             
             # Reload config file to pick up any changes
             with open(monitor_config, 'r') as f:
@@ -6104,7 +5943,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if self.snakefile_path and monitor_config:
                 # Use the same target rule that was used to start the pipeline
                 target_rule = self.pipeline_status.get('target_rule', 'all_default')
-                print(f"DEBUG: Starting background summary check with target_rule={target_rule}...")
                 self.summary_worker = SummaryWorker(
                     self.snakefile_path,
                     monitor_config,
@@ -6122,20 +5960,16 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
     def _on_summary_completed(self, file_status_map):
         """Handle summary results from background worker (runs in main GUI thread)"""
         try:
-            print(f"DEBUG: Summary completed with {len(file_status_map)} files")
             
             # Update the file status maps
             # In "run current only" mode, UPDATE the existing scope (don't replace)
             # This preserves the initial full-config summary while updating the selected file
             if self.run_current_only_mode:
-                print(f"DEBUG: Updating file status (merge mode for current selection)")
                 # Update only the files in the new summary, keep others unchanged
                 for file_path, status_info in file_status_map.items():
                     self.current_scope_files[file_path] = status_info
-                    print(f"DEBUG: Updated status for {file_path}")
             else:
                 # Normal mode: replace entire scope
-                print(f"DEBUG: Replacing entire file status map (normal mode)")
                 self.current_scope_files = file_status_map
             
             self.file_status_map = self.current_scope_files  # Backward compatibility
@@ -6163,7 +5997,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # Clear cache for files that changed to black so they reload fresh
             if files_changed_to_black:
-                print(f"DEBUG: {len(files_changed_to_black)} files changed to black:")
                 for subj, run in files_changed_to_black:
                     print(f"  - {subj} / {run}")
                 self._mark_updated_files_for_reload(files_changed_to_black)
@@ -6174,27 +6007,22 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 current_subj = self.subj.currentText() if hasattr(self, 'subj') else None
                 current_run = self.run.currentText() if hasattr(self, 'run') else None
                 
-                print(f"DEBUG: Currently displayed: subj='{current_subj}', run='{current_run}'")
-                print(f"DEBUG: Checking if ({current_subj}, {current_run}) in files_changed_to_black...")
                 
                 if current_subj and current_subj != "None" and current_run and current_run != "None":
                     if (current_subj, current_run) in files_changed_to_black:
-                        print(f"DEBUG: MATCH! Currently displayed file {current_subj}/{current_run} completed - auto-reloading ONCE")
                         self.statbar.showMessage(f"Auto-reloading {current_subj} {current_run} with fresh processed data...")
                         # Trigger reload by calling the plot function
                         QtCore.QTimer.singleShot(500, lambda: self._auto_reload_current_file())
                     else:
-                        print(f"DEBUG: No match - displayed file not in changed list")
                         # Check if ANY file type for this subject/run changed to black
                         # (files_changed_to_black only tracks the "Color by" file type)
                         # So let's check all file types manually
                         any_file_changed = self._check_any_file_type_changed_to_black(current_subj, current_run)
                         if any_file_changed:
-                            print(f"DEBUG: Another file type for {current_subj}/{current_run} completed - auto-reloading")
                             self.statbar.showMessage(f"Auto-reloading {current_subj} {current_run} with fresh processed data...")
                             QtCore.QTimer.singleShot(500, lambda: self._auto_reload_current_file())
                 else:
-                    print(f"DEBUG: Displayed file is None or empty - not auto-reloading")
+                    pass
             
             # Only check pipeline completion and update monitoring status if still running
             if self.pipeline_status.get('status') == 'running':
@@ -6208,7 +6036,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     total_count = len(file_status_map)
                     self.statbar.showMessage(f"Pipeline monitoring: {completed_count}/{total_count} files complete")
             else:
-                print("DEBUG: Pipeline not running, skipping completion check")
+                pass
             
         except Exception as e:
             print(f"Error handling summary results: {str(e)}")
@@ -6241,7 +6069,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # If we found newly completed files, update homer.config
             if newly_completed:
-                print(f"DEBUG: {len(newly_completed)} new files completed")
                 self.pipeline_status['completed_outputs'] = list(self.completed_pipeline_outputs)
                 
                 derivatives_dir = os.path.dirname(self.snakemake_config_path)
@@ -6257,43 +6084,33 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
     
     def _check_pipeline_completion(self):
         """Check if the Snakemake pipeline is still running using stored process info"""
-        print("DEBUG _check_pipeline_completion: Called")
-        print(f"DEBUG _check_pipeline_completion: Status = {self.pipeline_status.get('status')}")
         
         if self.pipeline_status.get('status') != 'running':
-            print("DEBUG _check_pipeline_completion: Status is not 'running', returning")
             return
         
         # If we don't have a PID, we can't check completion via process monitoring
         # This can happen if PID detection failed at launch
         if not self.pipeline_status.get('process_pid'):
-            print("DEBUG _check_pipeline_completion: No PID stored, cannot check completion via process monitoring")
             return
             
         try:
             # Use stored PID validation instead of scanning all processes
             snakemake_running = self._is_stored_pipeline_running()
-            print(f"DEBUG _check_pipeline_completion: _is_stored_pipeline_running returned {snakemake_running}")
             
             # If stored process not running, pipeline has completed
             if not snakemake_running:
-                print(f"DEBUG _check_pipeline_completion: Pipeline detected as completed!")
                 
                 # Do final summary check to get latest file states
-                print("DEBUG _check_pipeline_completion: Running final summary check...")
                 if self.snakefile_path and self.snakemake_config_path:
                     # Use temp config for final summary in "run current only" mode
                     # This checks the file we actually processed, not all files in original config
                     if self.run_current_only_mode and hasattr(self, '_actual_config_used'):
                         final_summary_config = self._actual_config_used  # temp config
-                        print(f"DEBUG: Using temp config for final summary (selected file only): {final_summary_config}")
                     else:
                         final_summary_config = self.snakemake_config_path
-                        print(f"DEBUG: Using current config for final summary: {final_summary_config}")
                     
                     # Use the same target rule that was used to start the pipeline
                     target_rule = self.pipeline_status.get('target_rule', 'all_default')
-                    print(f"DEBUG: Using target_rule={target_rule} for final summary")
                     
                     file_status_map = self._run_snakemake_summary(
                         self.snakefile_path,
@@ -6304,7 +6121,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     # In "run current only" mode, MERGE results (don't replace entire scope)
                     # This preserves the initial status of non-selected files
                     if self.run_current_only_mode:
-                        print(f"DEBUG: Merging final summary (preserving non-selected files)")
                         for file_path, status_info in file_status_map.items():
                             self.current_scope_files[file_path] = status_info
                         self.file_status_map = self.current_scope_files
@@ -6314,7 +6130,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         self.file_status_map = file_status_map
                         
                     self.all_scope_files = {}  # No dual summary
-                    print(f"DEBUG _check_pipeline_completion: Final summary returned {len(file_status_map)} files")
                 
                 derivatives_dir = os.path.dirname(self.snakemake_config_path)
                 
@@ -6357,7 +6172,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 self.current_selection_subject = None
                 self.current_selection_task = None
                 self.current_selection_run = None
-                print("DEBUG: Cleared 'run current only' mode")
                 
                 # Update file colors with final summary (orange files should turn red/black)
                 self._update_all_file_colors()
@@ -6378,10 +6192,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         subjects = dataset.get('subject', [])
         runs = dataset.get('run', [])
         
-        print(f"DEBUG: Config subjects: {subjects}")
-        print(f"DEBUG: Config runs: {runs}")
-        print(f"DEBUG: GUI subjects: {self.subjects}")
-        print(f"DEBUG: GUI subject_to_runs_map: {self.subject_to_runs_map}")
         
         # First pass: collect all run colors per subject
         subject_run_colors = {}  # {subject: [(run, color), ...]}
@@ -6399,14 +6209,12 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 old_color = self.file_colors.get((subject, run))
                 new_color = self._get_file_color(subject, run, subjects, runs)
                 
-                print(f"DEBUG: Subject={subject}, Run={run}, Old={old_color}, New={new_color}")
                 
                 if old_color != new_color:
                     self.file_colors[(subject, run)] = new_color
                     # Track files that changed to black (newly completed)
                     if new_color == 'black':
                         files_changed_to_black.append((subject, run))
-                        print(f"DEBUG: File changed to black: {subject} {run}")
                 
                 subject_run_colors[subject].append((run, new_color))
         
@@ -6486,15 +6294,12 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         """Check if the Snakemake pipeline is currently running"""
         # Check pipeline status from config
         status = self.pipeline_status.get('status')
-        print(f"DEBUG _is_pipeline_running: pipeline_status.status = '{status}'")
         
         if status == 'running':
             # Verify process is actually still alive
             is_running = self._is_stored_pipeline_running()
-            print(f"DEBUG _is_pipeline_running: _is_stored_pipeline_running returned {is_running}")
             return is_running
         
-        print(f"DEBUG _is_pipeline_running: Status is not 'running', returning False")
         return False
     
     def _get_file_color(self, subject, run, config_subjects, config_runs):
@@ -6541,11 +6346,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if file_path:
                 file_paths_to_check.append(file_path)
         
-        print(f"DEBUG _get_file_color: subject={subject}, run={run}, color_by={color_by}")
-        print(f"DEBUG: Looking for {file_type} file(s): {file_paths_to_check}")
         
         if not file_paths_to_check:
-            print(f"DEBUG: Could not determine {file_type} path(s), returning gray")
             return 'gray'
         
         # Single file mode - check the specific file
@@ -6554,37 +6356,30 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         # First check if file exists on disk
         import os
         file_exists = os.path.exists(file_path)
-        print(f"DEBUG: File exists on disk? {file_exists}")
         
         # If file exists on disk, it's up-to-date (black)
         # We don't need Snakemake to tell us a file that exists is complete
         if file_exists:
-            print(f"DEBUG: File exists, returning black")
             return 'black'
         
         # File doesn't exist yet - check if it's in the pipeline scope
         in_current_scope = file_path in self.current_scope_files
-        print(f"DEBUG: In current scope? {in_current_scope}")
         
         if not in_current_scope:
             # Not in current config and doesn't exist → gray (out of scope)
-            print(f"DEBUG: Not in current scope, returning gray")
             return 'gray'
         
         # Get status from current scope map
         status_info = self.current_scope_files[file_path]
         status = status_info.get('status', '')
         plan = status_info.get('plan', '')
-        print(f"DEBUG: status='{status}', plan='{plan}'")
         
         # Check if file is up to date
         # File is up-to-date if it exists (ok) AND Snakemake says no update needed
         is_up_to_date = (status == 'ok' and 'no update' in plan.lower())
-        print(f"DEBUG: is_up_to_date={is_up_to_date} (status==ok: {status == 'ok'}, 'no update' in plan: {'no update' in plan.lower()})")
         
         # Special handling for "Run on current selection only" mode
         if self.run_current_only_mode:
-            print(f"DEBUG: In 'run current only' mode")
             
             # Parse subject/task/run from parameters
             # subject format: "sub-15" → "15"
@@ -6604,40 +6399,31 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 file_run == self.current_selection_run
             )
             
-            print(f"DEBUG: File: sub-{file_subject}, task-{file_task}, run-{file_run}")
-            print(f"DEBUG: Selection: sub-{self.current_selection_subject}, task-{self.current_selection_task}, run-{self.current_selection_run}")
-            print(f"DEBUG: Matches selection? {is_selected}")
             
             if is_selected:
                 # Tier 1: File matches current selection (will be processed)
                 if is_up_to_date:
-                    print(f"DEBUG: Selected file, up to date → black")
                     return 'black'
                 else:
                     # Needs update and will be processed
                     color = 'orange' if self._is_pipeline_running() else 'red'
-                    print(f"DEBUG: Selected file, needs update, pipeline_running={self._is_pipeline_running()} → {color}")
                     return color
             else:
                 # Tier 2: File in GUI config but not selected (won't be processed this run)
                 if is_up_to_date:
-                    print(f"DEBUG: Not selected, up to date → black")
                     return 'black'
                 else:
                     # Needs update but won't be processed in this run
-                    print(f"DEBUG: Not selected, needs update → red (won't be processed)")
                     return 'red'
         
         # Normal mode (not in "run current only")
         if is_up_to_date:
             # In scope and up to date
-            print(f"DEBUG: Up to date, returning black")
             return 'black'
         else:
             # In scope and needs update
             # Orange if pipeline running, red if stopped
             color = 'orange' if self._is_pipeline_running() else 'red'
-            print(f"DEBUG: Needs update, pipeline_running={self._is_pipeline_running()}, color={color}")
             return color
     
     def _check_file_exists(self, subject, run):
@@ -6655,21 +6441,18 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         """Check if a file has been processed based on mtime vs last_run_time"""
         if not self.pipeline_status.get('last_run_time'):
             # No pipeline run yet, file is not processed
-            print(f"DEBUG: No last_run_time in pipeline_status")
             return False
         
         try:
             # Get the expected file path
             file_path = self._get_expected_file_path(subject, run)
             if not file_path or not os.path.exists(file_path):
-                print(f"DEBUG: File not found: {file_path}")
                 return False
             
             # Get file modification time
             file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
             last_run_time = datetime.fromisoformat(self.pipeline_status['last_run_time'])
             
-            print(f"DEBUG: {subject}/{run} - file_mtime={file_mtime}, last_run_time={last_run_time}")
             
             # File is processed if modified after (or close to) pipeline start
             # Allow 5 second tolerance for clock sync issues
@@ -6712,7 +6495,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
     def _get_expected_file_path(self, subject, run):
         """Get the expected HRF estimate file path for pipeline output based on Snakemake structure"""
         if not self.snakemake_config_path:
-            print(f"DEBUG: No snakemake_config_path")
             return None
         
         try:
@@ -6742,7 +6524,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             return file_path
             
         except Exception as e:
-            print(f"DEBUG: Error constructing file path: {str(e)}")
             return None
     
     def _get_image_recon_file_path(self, subject, run):
@@ -6802,25 +6583,19 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Normalize to match summary output format
             file_path = os.path.normpath(file_path)
             
-            print(f"DEBUG _get_image_recon_file_path: Constructed path: {file_path}")
-            print(f"DEBUG _get_image_recon_file_path: Filename: {filename}")
-            print(f"DEBUG _get_image_recon_file_path: current_scope_files has {len(self.current_scope_files) if hasattr(self, 'current_scope_files') else 0} entries")
-            print(f"DEBUG _get_image_recon_file_path: Path exists in summary: {file_path in self.current_scope_files if hasattr(self, 'current_scope_files') else 'N/A'}")
             if hasattr(self, 'current_scope_files') and len(self.current_scope_files) > 0:
                 # Show ALL paths in the summary for debugging
                 all_paths = list(self.current_scope_files.keys())
-                print(f"DEBUG _get_image_recon_file_path: All paths in summary: {all_paths}")
                 # Show matching paths in the summary
                 matching = [p for p in self.current_scope_files.keys() if 'image_results' in p and subject in p]
                 if matching:
-                    print(f"DEBUG _get_image_recon_file_path: Matching image paths in summary: {matching[:2]}")
+                    pass
                 else:
-                    print(f"DEBUG _get_image_recon_file_path: NO matching image_results paths found for {subject}")
+                    pass
             
             return file_path
             
         except Exception as e:
-            print(f"DEBUG: Error constructing image recon path: {str(e)}")
             return None
     
     def _mark_updated_files_for_reload(self, files_changed_to_black):
@@ -6842,24 +6617,19 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
     def _auto_reload_current_file(self):
         """Auto-reload the currently displayed file after it completes processing"""
         try:
-            print("DEBUG _auto_reload_current_file: Function called!")
             current_subj = self.subj.currentText()
             current_run = self.run.currentText()
             
-            print(f"DEBUG _auto_reload_current_file: current_subj='{current_subj}', current_run='{current_run}'")
             
             if current_subj and current_subj != "None" and current_run and current_run != "None":
                 # First, update the file_map to point to the newly processed files
-                print(f"DEBUG _auto_reload_current_file: Updating file_map for {current_subj}/{current_run}")
                 self._update_file_map_for_processed_data(current_subj, current_run)
                 
-                print(f"DEBUG _auto_reload_current_file: Conditions met, calling _run_changed('{current_run}') for {current_subj}/{current_run}")
                 # Force a replot by calling the selection changed handler with the current run text
                 self._run_changed(current_run, subject_changed=False)
-                print(f"DEBUG _auto_reload_current_file: _run_changed() completed")
                 self.statbar.showMessage(f"Reloaded {current_subj} {current_run} with fresh data")
             else:
-                print(f"DEBUG _auto_reload_current_file: Conditions not met (subject or run is None)")
+                pass
         except Exception as e:
             print(f"ERROR auto-reloading file: {str(e)}")
             import traceback
@@ -6868,11 +6638,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
     def _update_file_map_for_processed_data(self, subject, run):
         """Update file_map to point to newly processed files after pipeline completion"""
         try:
-            print(f"DEBUG _update_file_map_for_processed_data: Updating paths for {subject}/{run}")
             
             # Construct the path to the newly processed file
             if not self.snakemake_config_path:
-                print(f"DEBUG: No snakemake_config_path available")
                 return
             
             config_dir = os.path.dirname(self.snakemake_config_path)
@@ -6892,7 +6660,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # Check if the file exists
             if os.path.exists(preproc_path):
-                print(f"DEBUG: Found processed file: {preproc_path}")
                 
                 # Update file_map
                 if subject not in self.file_map:
@@ -6903,9 +6670,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 # Update the pkl_path to point to the processed file
                 old_path = self.file_map[subject][run].get('pkl_path')
                 self.file_map[subject][run]['pkl_path'] = preproc_path
-                print(f"DEBUG: Updated pkl_path from '{old_path}' to '{preproc_path}'")
             else:
-                print(f"DEBUG: Processed file not found at: {preproc_path}")
+                pass
                 
         except Exception as e:
             print(f"ERROR updating file_map: {str(e)}")
@@ -6919,7 +6685,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         which would indicate they were just processed and should trigger an auto-reload.
         """
         try:
-            print(f"DEBUG _check_any_file_type_changed_to_black: checking {subject}/{run}")
             
             # Define the three file types to check
             file_types = [
@@ -6930,11 +6695,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             for file_type_name, file_path in file_types:
                 if not file_path:
-                    print(f"DEBUG:   {file_type_name}: path not found")
                     continue
                     
                 if file_path not in self.current_scope_files:
-                    print(f"DEBUG:   {file_type_name}: not in current scope")
                     continue
                 
                 status_info = self.current_scope_files[file_path]
@@ -6942,16 +6705,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 plan = status_info.get('plan', '')
                 is_up_to_date = (status == 'ok' and 'no update' in plan.lower())
                 
-                print(f"DEBUG:   {file_type_name}: status={status}, plan={plan}, up_to_date={is_up_to_date}")
                 
                 if is_up_to_date:
                     # File is up-to-date in the current scope
                     # This likely means it was just processed (since cache was cleared)
                     # Or if running "current selection only", this is the file being processed
-                    print(f"DEBUG:   -> {file_type_name} file is up-to-date, triggering reload")
                     return True
             
-            print(f"DEBUG: No up-to-date files found in current scope for {subject}/{run}")
             return False
             
         except Exception as e:
