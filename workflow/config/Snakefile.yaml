@@ -3,8 +3,9 @@ dataset:
   derivatives_subfolder: "test_new_ced"  # where to save results. Saves as: derivatives/cedalion/YOURSTRING
   #subject: ["586", "587", "592", "618", "621"]  # subject IDs you want to include. DO NOT INCL EXCLUDED SUBS
   subjects_to_exclude: ["587", "618"]  # list of subjects you want to EXCLUDE.
-  task: ["BS"]  # task list. Currently only do ONE task at a time.                  
-  num_runs: 3
+  task: ["BS"]  # task list. Currently only do ONE task at a time. 
+  num_runs: 2  # number of runs for this task. If specified, overrides run_list.                 
+  # run_list: ["01","02"]  # list of runs for this task. If specified, overrides num_runs. Format should be ["01", "02", ...]
 
   # runs_to_exclude:   # FIXME: add this option to scripts
   #   "586": ["01"]  # dict of runs to exclude for each subject.

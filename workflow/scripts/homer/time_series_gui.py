@@ -2349,131 +2349,64 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 print(f"DEBUG: Run on current selection only mode enabled")
                 print(f"  Selected: sub-{self.current_selection_subject}, task-{self.current_selection_task}, run-{self.current_selection_run}")
                 
-                # Create a temporary config file with overrides using text-based approach
-                # This preserves all config sections, comments, and formatting
+                # Create a temporary config file with overrides
+                # This preserves nested config structure which command-line args cannot handle
                 if config_path and os.path.exists(config_path):
                     try:
-                        # Read original config as text to preserve formatting
+                        # Load config as dictionary
+                        import yaml
                         with open(config_path, 'r', encoding='utf-8') as f:
-                            config_text = f.read()
+                            config_data = yaml.safe_load(f)
                         
                         print(f"DEBUG: Creating temp config from: {config_path}")
                         
-                        # Replace subject value using regex (handles both inline and block formats)
-                        if subject_match:
-                            subject_id = subject_match.group(1)
-                            # Try inline format first: subject: [item1, item2]
-                            if re.search(r'subject:\s*\[', config_text):
-                                config_text = re.sub(
-                                    r'(subject:\s*\[)[^\]]*(\])',
-                                    rf'\g<1>"{subject_id}"\g<2>',
-                                    config_text
-                                )
-                                print(f"DEBUG: Replaced subject with [\"{subject_id}\"] (inline format)")
-                            # Try block format: subject:\n  - item1
-                            elif re.search(r'subject:\s*\n', config_text):
-                                config_text = re.sub(
-                                    r'(subject:)\s*\n(\s*-\s*[^\n]+\n)*',
-                                    rf'\g<1>\n  - "{subject_id}"\n',
-                                    config_text
-                                )
-                                print(f"DEBUG: Replaced subject with - \"{subject_id}\" (block format)")
-                        
-                        # Replace task value using regex
+                        # Override task with single-item list
                         if task_match:
                             task_id = task_match.group(1)
-                            # Try inline format first
-                            if re.search(r'task:\s*\[', config_text):
-                                config_text = re.sub(
-                                    r'(task:\s*\[)[^\]]*(\])',
-                                    rf'\g<1>"{task_id}"\g<2>',
-                                    config_text
-                                )
-                                print(f"DEBUG: Replaced task with [\"{task_id}\"] (inline format)")
-                            # Try block format
-                            elif re.search(r'task:\s*\n', config_text):
-                                config_text = re.sub(
-                                    r'(task:)\s*\n(\s*-\s*[^\n]+\n)*',
-                                    rf'\g<1>\n  - "{task_id}"\n',
-                                    config_text
-                                )
-                                print(f"DEBUG: Replaced task with - \"{task_id}\" (block format)")
+                            config_data['dataset']['task'] = [task_id]
+                            print(f"DEBUG: Override task=['{task_id}']")
                         
-                        # Replace run value using regex
+                        # Override run with single-item list
                         if run_match:
                             run_id = run_match.group(1)
-                            # Try inline format first
-                            if re.search(r'run:\s*\[', config_text):
-                                config_text = re.sub(
-                                    r'(run:\s*\[)[^\]]*(\])',
-                                    rf'\g<1>"{run_id}"\g<2>',
-                                    config_text
-                                )
-                                print(f"DEBUG: Replaced run with [\"{run_id}\"] (inline format)")
-                            # Try block format
-                            elif re.search(r'run:\s*\n', config_text):
-                                config_text = re.sub(
-                                    r'(run:)\s*\n(\s*-\s*[^\n]+\n)*',
-                                    rf'\g<1>\n  - "{run_id}"\n',
-                                    config_text
-                                )
-                                print(f"DEBUG: Replaced run with - \"{run_id}\" (block format)")
+                            config_data['dataset']['run'] = [run_id]
+                            print(f"DEBUG: Override run=['{run_id}']")
                         
-                        # Set num_runs to 1 since we're running single run only
-                        config_text = re.sub(
-                            r'(num_runs:\s*)\d+',
-                            r'\g<1>1',
-                            config_text
-                        )
-                        print(f"DEBUG: Set num_runs to 1 for current selection only mode")
+                        # Set run_list to match the single run (replaces num_runs approach)
+                        if run_match:
+                            config_data['dataset']['run_list'] = [run_id]
+                            print(f"DEBUG: Set run_list=['{run_id}']")
                         
                         # Set subjects_to_exclude to all subjects except the current one
                         if subject_match:
                             subject_id = subject_match.group(1)
-                            try:
-                                # Load config to get root_dir
-                                import yaml
-                                with open(config_path, 'r', encoding='utf-8') as f:
-                                    config_data = yaml.safe_load(f)
-                                root_dir = config_data.get('dataset', {}).get('root_dir', '')
+                            root_dir = config_data.get('dataset', {}).get('root_dir', '')
+                            
+                            # Find all sub-* directories in root_dir
+                            if root_dir and os.path.exists(root_dir):
+                                all_subjects = []
+                                for item in os.listdir(root_dir):
+                                    if item.startswith('sub-') and os.path.isdir(os.path.join(root_dir, item)):
+                                        # Extract subject ID (without "sub-" prefix)
+                                        sub_id = item.replace('sub-', '')
+                                        all_subjects.append(sub_id)
                                 
-                                # Find all sub-* directories in root_dir
-                                if root_dir and os.path.exists(root_dir):
-                                    all_subjects = []
-                                    for item in os.listdir(root_dir):
-                                        if item.startswith('sub-') and os.path.isdir(os.path.join(root_dir, item)):
-                                            # Extract subject ID (without "sub-" prefix)
-                                            sub_id = item.replace('sub-', '')
-                                            all_subjects.append(sub_id)
-                                    
-                                    # Exclude all subjects except current one
-                                    subjects_to_exclude = [s for s in all_subjects if s != subject_id]
-                                    if subjects_to_exclude:
-                                        # Replace subjects_to_exclude in config
-                                        exclude_str = ', '.join([f'"{s}"' for s in subjects_to_exclude])
-                                        config_text = re.sub(
-                                            r'(subjects_to_exclude:\s*)\[[^\]]*\]',
-                                            rf'\g<1>[{exclude_str}]',
-                                            config_text
-                                        )
-                                        print(f"DEBUG: Set subjects_to_exclude to exclude all except {subject_id}: {subjects_to_exclude}")
-                            except Exception as e:
-                                print(f"WARNING: Could not update subjects_to_exclude: {e}")
+                                # Exclude all subjects except current one
+                                subjects_to_exclude = [s for s in all_subjects if s != subject_id]
+                                config_data['dataset']['subjects_to_exclude'] = subjects_to_exclude
+                                print(f"DEBUG: Set subjects_to_exclude to exclude all except {subject_id}: {subjects_to_exclude}")
                         
-                        # Write temporary config file (for snakemake execution ONLY)
-                        # Save in same directory as original config instead of temp folder
+                        # Write temporary config file
+                        # Save in same directory as original config
                         config_dir = os.path.dirname(config_path)
                         temp_config_path = os.path.join(config_dir, 'snakemake_config_temp.yaml')
                         with open(temp_config_path, 'w', encoding='utf-8') as f:
-                            f.write(config_text)
+                            yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
                         
-                        # Store original config path for monitoring (before overwriting)
+                        # Store original config path for monitoring
                         original_config_path = config_path
-                        # Store as instance variable so monitoring can access it
-                        self.snakemake_config_path_original = original_config_path
                         config_path = temp_config_path  # Use temp config for execution
                         print(f"DEBUG: Created temp config at: {config_path}")
-                        print(f"DEBUG: Original config preserved for monitoring: {original_config_path}")
                         
                     except Exception as e:
                         print(f"ERROR: Config override failed: {e}")
@@ -2537,8 +2470,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         print(f"STDERR: {unlock_result.stderr[:200]}")
                     
                     # Now run summary to get status of all workflow files
-                    # When running "current selection only", use temp config for summary too
-                    # so it only detects files for the current selection
+                    # When running "current selection only", use temp config for summary
+                    # This ensures summary only detects files for the current selection
                     summary_config = config_path  # Use same config as execution (temp if current selection only)
                     config_type = "temp (current selection)" if run_current_only else "full"
                     print(f"Running summary for {config_type} config scope...")
@@ -2619,7 +2552,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         
                         # Only monitor actual pipeline runs, not dry runs or summaries
                         if not dry_run and not show_summary:
-                            # Store the actual config path used (temp or original) for process detection
+                            # Store the actual config path used (temp or original) for monitoring
                             self._actual_config_used = config_path
                             
                             # Wait for snakemake process to start with retries
@@ -5827,12 +5760,15 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             return
         
         try:
-            # Run summary for current config scope only
+            # Run summary using the actual config file (no temp config needed)
+            # The config file already has the correct subjects configured
             print("Running summary for current config scope...")
             self.current_scope_files = self._run_snakemake_summary(
                 self.snakefile_path,
-                self.snakemake_config_path
+                self.snakemake_config_path,
+                target_rule='all_imagerecon'  # Use all_imagerecon to get individual subject files
             )
+            
             print(f"  ✓ Loaded status for {len(self.current_scope_files)} files in current config")
             
             # No need for full scope summary - files not in current scope will be gray
@@ -5864,6 +5800,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 cmd = ['snakemake', '-s', snakefile_path, '--configfile', config_path, '--nolock', '--summary', target_rule]
             
             print(f"DEBUG: Running summary command: {' '.join(cmd)}")
+
             
             # Run the summary command
             result = subprocess.run(
@@ -6151,13 +6088,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         try:
             # Determine which config to use for monitoring
-            # In "run current only" mode, monitor only the temp config (file being processed)
-            # Use the actual config that was used for execution (temp or original)
+            # In "run current only" mode, use the temp config
             monitor_config = getattr(self, '_actual_config_used', self.snakemake_config_path)
+            
             if self.run_current_only_mode:
-                print(f"DEBUG: Monitoring temp config (selected file only): {monitor_config}")
+                print(f"DEBUG: Monitoring with temp config (selected file only): {monitor_config}")
             else:
-                print(f"DEBUG: Monitoring with current config: {monitor_config}")
+                print(f"DEBUG: Monitoring with current config (full pipeline)")
             
             # Reload config file to pick up any changes
             with open(monitor_config, 'r') as f:
@@ -6539,8 +6476,11 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         else:
             color = 'red'  # Needs work, pipeline not running
         
-        # Apply color to button text
-        self.image_recon_btn.setStyleSheet(f"color: {color}; font-weight: bold;")
+        # Apply color to button text (bold only for non-black)
+        if color == 'black':
+            self.image_recon_btn.setStyleSheet(f"color: {color};")
+        else:
+            self.image_recon_btn.setStyleSheet(f"color: {color}; font-weight: bold;")
     
     def _is_pipeline_running(self):
         """Check if the Snakemake pipeline is currently running"""
@@ -6811,23 +6751,71 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             return None
         
         try:
+            import yaml
             config_dir = os.path.dirname(self.snakemake_config_path)
+            
+            # Load config to get image_recon parameters
+            with open(self.snakemake_config_path, 'r') as f:
+                config = yaml.safe_load(f)
             
             # Extract task name from run (e.g., "task-STS_run-01" -> "STS")
             task = run.split('task-')[1].split('_')[0] if 'task-' in run else 'unknown'
-            run_num = run.split('run-')[1] if 'run-' in run else '01'
+            
+            # Extract subject number (e.g., "sub-752" -> "752")
+            subj_num = subject.split('-')[1] if '-' in subject else subject
+            
+            # Build filename matching Snakefile's get_imagerecon_output() function
+            img_cfg = config.get('image_recon', {})
+            
+            # Get alpha values and convert to string (handle both string and numeric types from YAML)
+            alpha_spatial = img_cfg.get('alpha_spatial', '1e-3')
+            alpha_meas = img_cfg.get('alpha_meas', '1e4')
+            # Convert to string as-is if string, otherwise use default string conversion
+            alpha_spatial_str = str(alpha_spatial)
+            alpha_meas_str = str(alpha_meas)
+            
+            filename = (
+                f"Xs_sub-{subj_num}_{task}"
+                f"_cov_alpha_spatial_{alpha_spatial_str}"
+                f"_alpha_meas_{alpha_meas_str}"
+                f"_recon_mode_{img_cfg.get('recon_mode', 'mua2conc')}"
+                f"{'_Cmeas' if img_cfg.get('Cmeas', {}).get('enable', False) else '_noCmeas'}"
+                f"{'_SB' if img_cfg.get('spatial_basis', {}).get('enable', False) else '_noSB'}"
+                f"{'_mag' if img_cfg.get('mag', {}).get('enable', False) else '_ts'}"
+            )
+            
+            # Add time window if mag is enabled
+            if img_cfg.get('mag', {}).get('enable', False):
+                t_win = img_cfg.get('mag', {}).get('t_win', [5, 8])
+                filename += f"_{t_win[0]}_{t_win[1]}"
+            
+            filename += ".nc"
             
             # Image reconstruction file path (individual subject):
-            # derivatives/cedalion/XXX/image_results/sub-10/Xs_sub-10_task-STS_run-01.nc
             file_path = os.path.join(
                 config_dir,
                 'image_results',
                 subject,
-                f"Xs_{subject}_task-{task}_run-{run_num}.nc"
+                filename
             )
             
             # Normalize to match summary output format
             file_path = os.path.normpath(file_path)
+            
+            print(f"DEBUG _get_image_recon_file_path: Constructed path: {file_path}")
+            print(f"DEBUG _get_image_recon_file_path: Filename: {filename}")
+            print(f"DEBUG _get_image_recon_file_path: current_scope_files has {len(self.current_scope_files) if hasattr(self, 'current_scope_files') else 0} entries")
+            print(f"DEBUG _get_image_recon_file_path: Path exists in summary: {file_path in self.current_scope_files if hasattr(self, 'current_scope_files') else 'N/A'}")
+            if hasattr(self, 'current_scope_files') and len(self.current_scope_files) > 0:
+                # Show ALL paths in the summary for debugging
+                all_paths = list(self.current_scope_files.keys())
+                print(f"DEBUG _get_image_recon_file_path: All paths in summary: {all_paths}")
+                # Show matching paths in the summary
+                matching = [p for p in self.current_scope_files.keys() if 'image_results' in p and subject in p]
+                if matching:
+                    print(f"DEBUG _get_image_recon_file_path: Matching image paths in summary: {matching[:2]}")
+                else:
+                    print(f"DEBUG _get_image_recon_file_path: NO matching image_results paths found for {subject}")
             
             return file_path
             

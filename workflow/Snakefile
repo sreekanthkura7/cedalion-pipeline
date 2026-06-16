@@ -29,7 +29,12 @@ SAVE_DIR = join(ROOT, 'derivatives', 'cedalion', DERIV)
 dirs = os.listdir(ROOT) 
 subject_list = [d.replace("sub-", "") for d in dirs if os.path.isdir(os.path.join(ROOT, d)) and "sub-" in d and d.replace("sub-", "") not in config["dataset"]["subjects_to_exclude"]]
 config["dataset"]["subject"] = subject_list
-config["dataset"]["run"] = [f"{i:02d}" for i in range(1, int(config["dataset"]["num_runs"]) + 1)]
+# Use run_list directly from config if specified, otherwise fall back to num_runs for backward compatibility
+if "run_list" in config["dataset"]:
+    config["dataset"]["run"] = config["dataset"]["run_list"]
+else:
+    # Backward compatibility: generate from num_runs if run_list not provided
+    config["dataset"]["run"] = [f"{i:02d}" for i in range(1, int(config["dataset"]["num_runs"]) + 1)]
 
 
 def get_imagerecon_output(): # create file name for image recon output

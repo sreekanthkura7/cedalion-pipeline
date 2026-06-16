@@ -356,7 +356,7 @@ def img_recon_func(cfg_img_recon, cfg_hrf, file_name, Adot_path, out, SB=[], roo
                         save_file_path = os.path.join(save_dir_full, filename )
         
                         print('plotting: ', filename)
-                        image_recon_multi_view(   #FIXME: add off_screen option to this function
+                        image_recon_multi_view(
                             foo_img,  # time series data; can be 2D (static) or 3D (dynamic)
                             head,
                             cmap='jet',
@@ -365,6 +365,7 @@ def img_recon_func(cfg_img_recon, cfg_hrf, file_name, Adot_path, out, SB=[], roo
                             title_str=f'{filename} / uM',
                             filename=save_file_path,
                             SAVE=True,
+                            off_screen=True,
                             #time_range=(foo_img.time.values[0],foo_img.time.values[-1],0.5)*units.s,
                             fps=12,
                             geo3d_plot = None, #  geo3d_plot
