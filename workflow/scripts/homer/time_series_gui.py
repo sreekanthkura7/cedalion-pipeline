@@ -35,6 +35,42 @@ import cedalion.dataclasses as cdc
 warnings.simplefilter("ignore")
 
 
+def _resolve_conda_command():
+    """Return an executable Conda command, including .bat on Windows."""
+    candidates = ['conda.exe', 'conda.bat', 'conda']
+    for candidate in candidates:
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+
+    user_home = os.path.expanduser('~')
+    if sys.platform == 'win32':
+        candidates = [
+            os.path.join(user_home, 'AppData', 'Local', 'miniconda3', 'condabin', 'conda.bat'),
+            os.path.join(user_home, 'AppData', 'Local', 'anaconda3', 'condabin', 'conda.bat'),
+            os.path.join(user_home, 'miniconda3', 'condabin', 'conda.bat'),
+            os.path.join(user_home, 'anaconda3', 'condabin', 'conda.bat'),
+            r'C:\ProgramData\miniconda3\condabin\conda.bat',
+            r'C:\ProgramData\anaconda3\condabin\conda.bat',
+        ]
+    else:
+        candidates = [
+            os.path.join(user_home, 'miniconda3', 'bin', 'conda'),
+            os.path.join(user_home, 'anaconda3', 'bin', 'conda'),
+            '/opt/miniconda3/bin/conda',
+            '/opt/anaconda3/bin/conda',
+        ]
+
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+
+    raise FileNotFoundError(
+        "Could not locate the Conda executable. Start HomerPy from an "
+        "Anaconda/Miniconda prompt or add Conda's condabin directory to PATH."
+    )
+
+
 class ConfigEditorDialog(QtWidgets.QDialog):
     """Dialog for editing YAML configuration blocks"""
     
@@ -569,63 +605,12 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
         environments = []
         error_msg = None
         
-        # Try to find conda executable
-        conda_cmd = None
-        
-        # First, try standard PATH lookup
-        for cmd in ['conda', 'conda.bat', 'conda.exe']:
-            if shutil.which(cmd):
-                conda_cmd = cmd
-                print(f"DEBUG: Found conda in PATH: {conda_cmd}")
-                break
-        
-        # If not in PATH, try common installation locations
-        if not conda_cmd:
-            print("DEBUG: conda not in PATH, checking common installation locations...")
-            possible_paths = []
-            
-            # Windows common locations
-            if sys.platform == 'win32':
-                user_home = os.path.expanduser('~')
-                possible_paths = [
-                    os.path.join(user_home, 'anaconda3', 'Scripts', 'conda.exe'),
-                    os.path.join(user_home, 'Anaconda3', 'Scripts', 'conda.exe'),
-                    os.path.join(user_home, 'miniconda3', 'Scripts', 'conda.exe'),
-                    os.path.join(user_home, 'Miniconda3', 'Scripts', 'conda.exe'),
-                    r'C:\ProgramData\anaconda3\Scripts\conda.exe',
-                    r'C:\ProgramData\Anaconda3\Scripts\conda.exe',
-                    r'C:\ProgramData\miniconda3\Scripts\conda.exe',
-                    r'C:\tools\anaconda3\Scripts\conda.exe',
-                    r'C:\tools\miniconda3\Scripts\conda.exe',
-                ]
-            else:
-                # Unix/Mac common locations
-                user_home = os.path.expanduser('~')
-                possible_paths = [
-                    os.path.join(user_home, 'anaconda3', 'bin', 'conda'),
-                    os.path.join(user_home, 'miniconda3', 'bin', 'conda'),
-                    os.path.join(user_home, 'opt', 'anaconda3', 'bin', 'conda'),
-                    os.path.join(user_home, 'opt', 'miniconda3', 'bin', 'conda'),
-                    '/opt/anaconda3/bin/conda',
-                    '/opt/miniconda3/bin/conda',
-                    '/usr/local/anaconda3/bin/conda',
-                    '/usr/local/miniconda3/bin/conda',
-                ]
-            
-            for path in possible_paths:
-                if os.path.isfile(path):
-                    conda_cmd = path
-                    print(f"DEBUG: Found conda at: {conda_cmd}")
-                    break
-        
-        if not conda_cmd:
-            error_msg = "conda command not found in PATH or common installation locations."
+        try:
+            conda_cmd = _resolve_conda_command()
+            print(f"DEBUG: Resolved conda command: {conda_cmd}")
+        except FileNotFoundError as e:
+            error_msg = str(e)
             print(f"ERROR: {error_msg}")
-            print("DEBUG: Checked for: conda, conda.bat, conda.exe in PATH")
-            print(f"DEBUG: Checked {len(possible_paths) if 'possible_paths' in locals() else 0} common installation paths")
-            print(f"DEBUG: System PATH: {os.environ.get('PATH', 'N/A')[:200]}...")
-            print("HINT: If conda works in terminal, try running the GUI from an Anaconda/Miniconda prompt")
-            # Return fallback defaults
             return ["cedalion_snakemake", "cedalion_snakemake_dev"]
         
         try:
@@ -635,7 +620,7 @@ class SnakemakeRunDialog(QtWidgets.QDialog):
                 capture_output=True,
                 text=True,
                 timeout=10,
-                shell=(sys.platform == 'win32')  # Use shell on Windows for .bat files
+                shell=False
             )
             
             print(f"DEBUG: conda env list return code: {result.returncode}")
@@ -872,7 +857,7 @@ class SummaryWorker(QtCore.QThread):
         try:
             # Build command with conda activation if environment is set
             if self.conda_env:
-                cmd = ['conda', 'run', '-n', self.conda_env, '--no-capture-output',
+                cmd = [_resolve_conda_command(), 'run', '-n', self.conda_env, '--no-capture-output',
                        'snakemake', '-s', self.snakefile_path,
                        '--configfile', self.config_path, '--nolock', '--summary', self.target_rule]
             else:
@@ -2427,6 +2412,12 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             if config_path:
                 cmd.extend(['--configfile', config_path])
+
+            # Long absolute output paths can exceed Windows' per-filename limit
+            # when Snakemake Base64-encodes them for provenance metadata.
+            # Outputs and normal dependency checks are unaffected.
+            if sys.platform == 'win32':
+                cmd.append('--drop-metadata')
             
             if dry_run:
                 cmd.append('-n')
@@ -2460,8 +2451,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 try:
                     # First, unlock the directory in case of stale locks
                     print("Unlocking workflow directory...")
-                    unlock_cmd = ['conda', 'run', '-n', conda_env, '--no-capture-output',
+                    conda_cmd = _resolve_conda_command()
+                    unlock_cmd = [conda_cmd, 'run', '-n', conda_env, '--no-capture-output',
                                   'snakemake', '-s', snakefile_path, '--configfile', config_path, '--unlock']
+                    print(f"DEBUG: Unlock command: {subprocess.list2cmdline(unlock_cmd)}")
                     unlock_result = subprocess.run(unlock_cmd, capture_output=True, text=True, timeout=30)
                     if unlock_result.returncode == 0:
                         print("Workflow directory unlocked successfully")
@@ -2492,7 +2485,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         print(f"Files needing processing: {len(self.expected_pipeline_outputs)}")
                     else:
                         print("WARNING: No workflow files detected from summary")
-                        QtWidgets.QMessageBox.warning(
+                        response = QtWidgets.QMessageBox.warning(
                             self,
                             "Summary Warning",
                             "Summary did not detect any workflow files.\n\n"
@@ -2502,7 +2495,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                             "Do you want to continue anyway?",
                             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
                         )
-                        if QtWidgets.QMessageBox.No:
+                        if response == QtWidgets.QMessageBox.No:
                             return
                         self.current_scope_files = {}
                         self.file_status_map = {}
@@ -2536,19 +2529,19 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     
                     # Run in a new console window on Windows
                     if sys.platform == 'win32':
-                        # Launch in new terminal and capture the process
-                        # We need to start cmd with the command, and get the child snakemake process
-                        cmd_str = ' '.join(f'"{part}"' if ' ' in part else part for part in cmd)
-                        
-                        # TEMPORARY: Keep terminal open for ALL runs to debug issues
-                        terminal_flag = '/k'  # Keep terminal open
-                        # if dry_run or show_summary:
-                        #     terminal_flag = '/k'  # Keep terminal open
-                        # else:
-                        #     terminal_flag = '/c'  # Close terminal when done
-                        
-                        full_cmd = f'start "Snakemake Pipeline" cmd {terminal_flag} "conda activate {conda_env} && {cmd_str}"'
-                        subprocess.Popen(full_cmd, shell=True)
+                        # Use the resolved Conda executable directly. This avoids
+                        # relying on a shell-specific "conda activate" alias.
+                        launch_cmd = [
+                            conda_cmd, 'run', '-n', conda_env, '--no-capture-output',
+                            *cmd,
+                        ]
+                        print(f"DEBUG: Launch command: {subprocess.list2cmdline(launch_cmd)}")
+                        console_command = subprocess.list2cmdline(launch_cmd)
+                        subprocess.Popen(
+                            [os.environ.get('COMSPEC', r'C:\Windows\System32\cmd.exe'),
+                             '/k', console_command],
+                            creationflags=subprocess.CREATE_NEW_CONSOLE,
+                        )
                         
                         # Only monitor actual pipeline runs, not dry runs or summaries
                         if not dry_run and not show_summary:
@@ -5794,7 +5787,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Build command with conda activation if environment is set
             if self.conda_env:
                 # Use 'conda run' for proper environment activation
-                cmd = ['conda', 'run', '-n', self.conda_env, '--no-capture-output', 
+                cmd = [_resolve_conda_command(), 'run', '-n', self.conda_env, '--no-capture-output',
                        'snakemake', '-s', snakefile_path, '--configfile', config_path, '--nolock', '--summary', target_rule]
             else:
                 cmd = ['snakemake', '-s', snakefile_path, '--configfile', config_path, '--nolock', '--summary', target_rule]
