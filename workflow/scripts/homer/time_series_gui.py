@@ -1605,7 +1605,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             try:
                 # Construct HRF file path
                 if '_preprocessed.snirf' in pkl_path:
-                    hrf_file_path = pkl_path.replace('Outputs/preprocessed_data', 'Outputs/hrf_estimate')
+                    # Normalize path separators for cross-platform compatibility
+                    hrf_file_path = pkl_path.replace(os.path.join('Outputs', 'preprocessed_data'), os.path.join('Outputs', 'hrf_estimate'))
                     
                     # Remove '_run-<run-name>' pattern using regex
                     import re
@@ -1673,12 +1674,15 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # Get the base path (up to and including the working directory)
             # Could be either: .../derivatives/cedalion/new_inclQ_first_walk or similar
-            if 'Outputs/hrf_estimate' in pkl_path:
+            outputs_hrf = os.path.join('Outputs', 'hrf_estimate')
+            outputs_prep = os.path.join('Outputs', 'preprocessed_data')
+            
+            if outputs_hrf in pkl_path:
                 # Currently looking at HRF file, extract base path
-                base_path = pkl_path.split('Outputs/hrf_estimate')[0]
-            elif 'Outputs/preprocessed_data' in pkl_path:
+                base_path = pkl_path.split(outputs_hrf)[0]
+            elif outputs_prep in pkl_path:
                 # Currently looking at preprocessed file
-                base_path = pkl_path.split('Outputs/preprocessed_data')[0]
+                base_path = pkl_path.split(outputs_prep)[0]
             else:
                 print("Could not determine base path - neither Outputs/hrf_estimate nor Outputs/preprocessed_data found")
                 return None

@@ -76,7 +76,7 @@ print(f"Derived BIDS root directory: {root_dir}")
 if os.path.basename(path_to_data) == 'preprocessed_data':
     preprocessed_path = path_to_data
 else:
-    preprocessed_path = os.path.join(path_to_data, 'preprocessed_data')
+    preprocessed_path = os.path.join(path_to_data, 'Outputs', 'preprocessed_data')
 
 # List to store the extracted information
 all_data_info = []
