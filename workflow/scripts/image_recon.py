@@ -272,11 +272,25 @@ def img_recon_func(cfg_img_recon, cfg_hrf, file_name, Adot_path, out, SB=[], roo
     # #%% build and save plots
 
     if cfg_img_recon['plot_image']['enable']:
-        save_dir_tmp = os.path.join(root_dir, derivatives_subfolder, 'cedalion', 'plots', 'image_recon')
+        # Extract subject ID from output path (e.g., "sub-756" from path)
+        out_dir = os.path.dirname(out)  # Get directory of output file
+        subject_folder = os.path.basename(out_dir)  # Get last folder name (should be "sub-XXX")
+        
+        # Create plots directory: derivatives/cedalion/{subfolder}/plots/image_results/sub-XXX/
+        save_dir_tmp = os.path.join(root_dir, 'derivatives', 'cedalion', derivatives_subfolder, 'plots', 'image_results', subject_folder)
         os.makedirs(save_dir_tmp, exist_ok=True)
 
-        folder_name = out.removeprefix("Xs_").removesuffix(".nc")
-        suffix = out.split("Xs_")[1].split("_BS")[0]
+        # Extract filename info for organizing plots
+        out_basename = os.path.basename(out)  # Just the filename
+        folder_name = out_basename.removeprefix("Xs_").removesuffix(".nc")
+        
+        # Extract parameter portion of filename (everything after subject_task up to _noSB or _SB)
+        if "_noSB" in out_basename:
+            suffix = out_basename.split("_noSB")[0].split("_", 2)[-1] if "_" in out_basename else ""
+        elif "_SB" in out_basename:
+            suffix = out_basename.split("_SB")[0].split("_", 2)[-1] if "_" in out_basename else ""
+        else:
+            suffix = folder_name
 
         intensity = np.log10(Adot[:,:,0].sum('channel')) # make non-sensitive vertices NaN / gray in image
         mask = intensity > -2

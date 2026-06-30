@@ -39,7 +39,7 @@ else:
 
 def get_imagerecon_output(): # create file name for image recon output
     return (
-        f"{SAVE_DIR}/image_results/sub-{{subject}}/"
+        f"{SAVE_DIR}/Outputs/image_results/sub-{{subject}}/"
         f"Xs_sub-{{subject}}_{{task}}"
         f"_cov_alpha_spatial_{config['image_recon']['alpha_spatial']}"
         f"_alpha_meas_{config['image_recon']['alpha_meas']}"
@@ -53,7 +53,7 @@ def get_imagerecon_output(): # create file name for image recon output
 
 def get_groupavg_imagerecon_output():
     return (
-        f"{SAVE_DIR}/group_results/"
+        f"{SAVE_DIR}/Outputs/group_results/"
         f"Xs_groupavg_{{task}}"
         f"_cov_alpha_spatial_{config['image_recon']['alpha_spatial']}"
         f"_alpha_meas_{config['image_recon']['alpha_meas']}"
@@ -68,7 +68,7 @@ def get_groupavg_imagerecon_output():
 
 def get_hrf_output():
     return (
-        f"{SAVE_DIR}/hrf_estimate/sub-{{subject}}/"
+        f"{SAVE_DIR}/Outputs/hrf_estimate/sub-{{subject}}/"
         f"sub-{{subject}}_task-{{task}}_nirs_hrf_estimate_{config['hrf_estimation']['rec_str']}.nc"
     )
 
@@ -76,7 +76,7 @@ rule all_default:
     input:
         # Groupaverage channel space 
         [expand(
-            f"{SAVE_DIR}/group_results/"
+            f"{SAVE_DIR}/Outputs/group_results/"
             f"task-{{task}}_nirs_groupaverage_chanspace_{config['hrf_estimation']['rec_str']}.nc",
             task=config["dataset"]["task"],
         ),
@@ -96,8 +96,8 @@ rule all_groupavg_imagerecon:
 rule all_preprocess:
     input:
         expand([
-            (f"{SAVE_DIR}/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_preprocessed.snirf"),  #  preprocessed_dataessed snirf
-            (f"{SAVE_DIR}/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_dataquality.nc"), # data qual sidecar 
+            (f"{SAVE_DIR}/Outputs/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_preprocessed.snirf"),  #  preprocessed_dataessed snirf
+            (f"{SAVE_DIR}/Outputs/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_dataquality.nc"), # data qual sidecar 
             ],
             subject = config["dataset"]["subject"],
             task = config["dataset"]["task"],
@@ -115,7 +115,7 @@ rule all_hrf_estimation:
 rule all_groupaverage:
     input:
         expand([  
-            (f"{SAVE_DIR}/group_results/task-{{task}}_nirs_groupaverage_chanspace_{config['hrf_estimation']['rec_str']}.nc") # groupaverage
+            (f"{SAVE_DIR}/Outputs/group_results/task-{{task}}_nirs_groupaverage_chanspace_{config['hrf_estimation']['rec_str']}.nc") # groupaverage
             ],
             task = config["dataset"]["task"],
             )      
@@ -137,8 +137,8 @@ rule preprocess:
         module1 = SNAKEFILE_DIR / "scripts/modules/module_preprocess.py",
         module2 = SNAKEFILE_DIR / "scripts/modules/module_plot_DQR.py"
     output:
-        snirf = (f"{SAVE_DIR}/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_preprocessed.snirf"), # preprocessed snirf
-        sidecar = (f"{SAVE_DIR}/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_dataquality.nc"), # data qual sidecar
+        snirf = (f"{SAVE_DIR}/Outputs/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_preprocessed.snirf"), # preprocessed snirf
+        sidecar = (f"{SAVE_DIR}/Outputs/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_dataquality.nc"), # data qual sidecar
     params:
         cfg_preprocess = config['preprocess'],
         root_dir = ROOT,
@@ -153,12 +153,12 @@ def all_preprocessed_runs(wc):
     ''' Return a list of all preprocessed .snirf files for this subject and task (i.e. all runs)'''  
     
     run_paths =  [
-        f"{SAVE_DIR}/preprocessed_data/sub-{wc.subject}/"
+        f"{SAVE_DIR}/Outputs/preprocessed_data/sub-{wc.subject}/"
         f"sub-{wc.subject}_task-{wc.task}_run-{run}_nirs_preprocessed.snirf"
         for run in config["dataset"]["run"]
     ]
     data_quality_paths = [
-        f"{SAVE_DIR}/preprocessed_data/sub-{wc.subject}/"
+        f"{SAVE_DIR}/Outputs/preprocessed_data/sub-{wc.subject}/"
         f"sub-{wc.subject}_task-{wc.task}_run-{run}_nirs_dataquality.nc"
         for run in config["dataset"]["run"]
     ]
@@ -186,7 +186,7 @@ def all_hrf_files(wc):
     ''' Return a list of all hrf files for this subject+task (i.e. all subs)'''  
     
     hrf_paths =  [
-        f"{SAVE_DIR}/hrf_estimate/sub-{subject}/sub-{subject}_task-{wc.task}_nirs_hrf_estimate_{config['hrf_estimation']['rec_str']}.nc" 
+        f"{SAVE_DIR}/Outputs/hrf_estimate/sub-{subject}/sub-{subject}_task-{wc.task}_nirs_hrf_estimate_{config['hrf_estimation']['rec_str']}.nc" 
         for subject in config["dataset"]["subject"]
     ]
 
@@ -201,7 +201,7 @@ rule groupaverage:
         hrf_subs  = lambda wc: all_hrf_files(wc)["hrf"], # block avg data
     output:
         # group averaged data
-        (f"{SAVE_DIR}/group_results/task-{{task}}_nirs_groupaverage_chanspace_{config['hrf_estimation']['rec_str']}.nc")   
+        (f"{SAVE_DIR}/Outputs/group_results/task-{{task}}_nirs_groupaverage_chanspace_{config['hrf_estimation']['rec_str']}.nc")   
     params:
         cfg_groupaverage = config["groupaverage"],
         cfg_dataset = config['dataset'],
@@ -265,7 +265,7 @@ def all_img_files(wc):
     ''' Return a list of all img files for this subject and task (i.e. all subs)'''  
     img_paths =  [
         (
-        f"{SAVE_DIR}/image_results/sub-{subject}/"
+        f"{SAVE_DIR}/Outputs/image_results/sub-{subject}/"
         f"Xs_sub-{subject}_{wc.task}"
         f"_cov_alpha_spatial_{config['image_recon']['alpha_spatial']}"
         f"_alpha_meas_{config['image_recon']['alpha_meas']}"

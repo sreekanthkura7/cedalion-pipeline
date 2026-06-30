@@ -38,7 +38,10 @@ mse_amp_thresh = config['groupaverage']['mse']['mse_amp_thresh']
 dirs = os.listdir(cfg_dataset['root_dir'])
 subjects = [d.replace("sub-", "") for d in dirs if "sub" in d and d.replace("sub-", "") not in cfg_dataset["subjects_to_exclude"]]
 config["dataset"]["subject"] = subjects
-config["run"] = [f"{i:02d}" for i in range(1, int(config["dataset"]["num_runs"]) + 1)]
+if "run_list" in config["dataset"]:
+    config["run"] = config["dataset"]["run_list"]
+else:
+    config["run"] = [f"{i:02d}" for i in range(1, int(config["dataset"]["num_runs"]) + 1)]
 runs = config["run"]
 tasks = cfg_dataset['task'] 
 # runs = cfg_dataset['run']    

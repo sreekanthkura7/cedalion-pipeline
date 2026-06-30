@@ -1605,7 +1605,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             try:
                 # Construct HRF file path
                 if '_preprocessed.snirf' in pkl_path:
-                    hrf_file_path = pkl_path.replace('preprocessed_data', 'hrf_estimate')
+                    hrf_file_path = pkl_path.replace('Outputs/preprocessed_data', 'Outputs/hrf_estimate')
                     
                     # Remove '_run-<run-name>' pattern using regex
                     import re
@@ -1673,14 +1673,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # Get the base path (up to and including the working directory)
             # Could be either: .../derivatives/cedalion/new_inclQ_first_walk or similar
-            if 'hrf_estimate' in pkl_path:
+            if 'Outputs/hrf_estimate' in pkl_path:
                 # Currently looking at HRF file, extract base path
-                base_path = pkl_path.split('hrf_estimate')[0]
-            elif 'preprocessed_data' in pkl_path:
+                base_path = pkl_path.split('Outputs/hrf_estimate')[0]
+            elif 'Outputs/preprocessed_data' in pkl_path:
                 # Currently looking at preprocessed file
-                base_path = pkl_path.split('preprocessed_data')[0]
+                base_path = pkl_path.split('Outputs/preprocessed_data')[0]
             else:
-                print("Could not determine base path - neither hrf_estimate nor preprocessed_data found")
+                print("Could not determine base path - neither Outputs/hrf_estimate nor Outputs/preprocessed_data found")
                 return None
             
             print(f"Base path: {base_path}")
@@ -1691,7 +1691,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             print(f"Task name: {task_name}")
             
             # Try different naming patterns
-            groupavg_dir = os.path.join(base_path, 'group_results')
+            groupavg_dir = os.path.join(base_path, 'Outputs', 'group_results')
             possible_patterns = [
                 f"task-{task_name}_nirs_groupaverage_chanspace_conc.nc",
                 f"task-{task_name}_hrf_estimate_conc.nc",
@@ -2075,9 +2075,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         after_derivatives = parts[1].lstrip(os.sep).lstrip('/')
                         # Split by path separator to get folder structure
                         path_parts = after_derivatives.split(os.sep)
-                        # Keep folders until we hit preprocessed_data, hrf_estimate, or sub- folders
+                        # Keep folders until we hit Outputs, preprocessed_data, hrf_estimate, or sub- folders
                         # These indicate we're at the pipeline output level or subject level
-                        pipeline_folders = ['preprocessed_data', 'hrf_estimate', 'image_results', 
+                        pipeline_folders = ['Outputs', 'preprocessed_data', 'hrf_estimate', 'image_results', 
                                           'group_results', 'qa_reports']
                         subfolder_parts = []
                         for part in path_parts:
@@ -4031,7 +4031,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         print(f"Task: {task_name}, Base path: {base_path}")
         
         # Check if image_results directory exists
-        image_results_dir = os.path.join(base_path, 'image_results')
+        image_results_dir = os.path.join(base_path, 'Outputs', 'image_results')
         if not os.path.exists(image_results_dir):
             msg = f"Image results directory not found: {image_results_dir}"
             print(f"ERROR: {msg}")
@@ -4330,13 +4330,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 pkl_basename = pkl_basename[:-4]  # Remove .pkl
             
             # Build directory structure
-            plots_dir = os.path.join(self.path_to_data, 'plots', 'image_recon')
+            plots_dir = os.path.join(self.path_to_data, 'plots', 'image_results')
             
             if is_group_avg:
-                # Group: plots/image_recon/Xs_groupavg_task_timestamp/
+                # Group: plots/image_results/Xs_groupavg_task_timestamp/
                 save_dir = os.path.join(plots_dir, pkl_basename)
             else:
-                # Subject: plots/image_recon/sub-XX/Xs_sub-XX_task_timestamp/
+                # Subject: plots/image_results/sub-XX/Xs_sub-XX_task_timestamp/
                 save_dir = os.path.join(plots_dir, current_subject, pkl_basename)
             
             # Create directory structure
@@ -6476,9 +6476,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             run_num = run.split('run-')[1] if 'run-' in run else '01'
             
             # Construct preprocessing file path matching Snakemake output format:
-            # derivatives/cedalion/XXX/preprocessed_data/sub-10/sub-10_task-STS_run-01_nirs_preprocessed.snirf
+            # derivatives/cedalion/XXX/Outputs/preprocessed_data/sub-10/sub-10_task-STS_run-01_nirs_preprocessed.snirf
             preproc_path = os.path.join(
                 config_dir,
+                'Outputs',
                 'preprocessed_data',
                 subject,
                 f"{subject}_task-{task}_run-{run_num}_nirs_preprocessed.snirf"
@@ -6510,9 +6511,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             rec_str = hrf_config.get('rec_str', 'conc')
             
             # Construct expected output path matching Snakemake output format:
-            # derivatives/cedalion/XXX/hrf_estimate/sub-10/sub-10_task-STS_nirs_hrf_estimate_<rec_str>.nc
+            # derivatives/cedalion/XXX/Outputs/hrf_estimate/sub-10/sub-10_task-STS_nirs_hrf_estimate_<rec_str>.nc
             file_path = os.path.join(
                 config_dir,
+                'Outputs',
                 'hrf_estimate',
                 subject,
                 f"{subject}_{run.split('_run-')[0]}_nirs_hrf_estimate_{rec_str}.nc"
@@ -6575,6 +6577,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Image reconstruction file path (individual subject):
             file_path = os.path.join(
                 config_dir,
+                'Outputs',
                 'image_results',
                 subject,
                 filename
@@ -6652,6 +6655,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Construct preprocessed file path
             preproc_path = os.path.join(
                 config_dir,
+                'Outputs',
                 'preprocessed_data',
                 subject,
                 f"{subject}_task-{task}_run-{run_num}_nirs_preprocessed.snirf"
