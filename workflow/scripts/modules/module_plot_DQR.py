@@ -440,6 +440,23 @@ def plot_slope(rec = None, slope = None, cfg_preprocess=None, filenm = None, roo
     
 
 def plotDQR_sidecar(file_json, rec, root_dir, derivatives_subfolder, filenm):
+    # These fields are optional, device-specific calibration metadata and are
+    # not part of a minimal BIDS NIRS sidecar. Skip these extra plots when the
+    # acquisition did not provide them; the standard DQR remains available.
+    required_fields = {
+        'dataSDWP_LowHigh',
+        'powerLevelSetting',
+        'powerLevelSetLowHigh',
+        'srcModuleGroups',
+        'SD',
+    }
+    missing_fields = sorted(required_fields.difference(file_json))
+    if missing_fields:
+        print(
+            "Skipping optional DQR sidecar plots; missing JSON fields: "
+            + ", ".join(missing_fields)
+        )
+        return
 
     # get the variables from the json file
     dataSDWP_LowHigh = file_json['dataSDWP_LowHigh']
