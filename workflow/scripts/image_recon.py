@@ -96,7 +96,9 @@ def img_recon_func(cfg_img_recon, cfg_hrf, file_name, Adot_path, out, SB=[], roo
     elif 'preprocess' in file_name:
         records = cedalion.io.read_snirf(fname = file_name, time_units = 'second' ) #FIXME: HARD CODED TIME UNITS
         rec = records[0]
-        if 'od_corrected' in rec.timeseries.keys(): #naming conventions change based on what file we load
+        if 'od' in rec.timeseries.keys():
+            ts = rec['od'].copy()
+        elif 'od_corrected' in rec.timeseries.keys(): #naming conventions change based on what file we load
             ts = rec['od_corrected'].copy()
         else:
              ts = rec['od_02'].copy()  # name if saved as snirf

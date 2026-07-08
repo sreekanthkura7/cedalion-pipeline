@@ -58,7 +58,11 @@ def hrf_est_func(cfg_hrf, run_files, data_quality_files, out_file):
         # # Load in snirf for curr subj and run
         records = cedalion.io.read_snirf(fname = run, time_units = 'second' ) #FIXME: HARD CODED TIME UNITS
         rec = records[0]
-        ts = rec[cfg_hrf['rec_str']].copy()
+        rec_str = cfg_hrf['rec_str']
+        if rec_str not in rec.timeseries and rec_str == 'od_02' and 'od' in rec.timeseries:
+            print("WARNING: hrf_estimation rec_str='od_02' is deprecated; using cleaned preprocessed 'od' instead.")
+            rec_str = 'od'
+        ts = rec[rec_str].copy()
         stim = rec.stim.copy() # select the stim for the given file 
 
         # Load in data quality info for current run
