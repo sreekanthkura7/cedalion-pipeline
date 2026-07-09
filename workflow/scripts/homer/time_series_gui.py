@@ -897,12 +897,14 @@ class SummaryWorker(QtCore.QThread):
     summary_completed = QtCore.Signal(dict)  # Emits file_status_map
     summary_failed = QtCore.Signal(str)  # Emits error message
     
-    def __init__(self, snakefile_path, config_path, conda_env=None, target_rule='all_default'):
+    def __init__(self, snakefile_path, config_path, conda_env=None, target_rule='all_default', workdir=None, output_base_dir=None):
         super().__init__()
         self.snakefile_path = snakefile_path
         self.config_path = config_path
         self.conda_env = conda_env
         self.target_rule = target_rule
+        self.workdir = workdir
+        self.output_base_dir = output_base_dir
         self._is_canceled = False
     
     def cancel(self):
@@ -940,7 +942,7 @@ class SummaryWorker(QtCore.QThread):
                 cmd,
                 capture_output=True,
                 text=True,
-                cwd=os.path.dirname(self.snakefile_path)
+                cwd=self.workdir or os.path.dirname(self.snakefile_path)
             )
             
             if self._is_canceled:
@@ -979,6 +981,8 @@ class SummaryWorker(QtCore.QThread):
                 
                 # Normalize path for consistent comparison
                 file_path = os.path.normpath(file_path)
+                if self.output_base_dir and not os.path.isabs(file_path):
+                    file_path = os.path.normpath(os.path.join(self.output_base_dir, file_path))
                 
                 file_status_map[file_path] = {
                     'status': status,
@@ -2413,6 +2417,36 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         }
         return target_map.get(target_rule, target_rule)
 
+    def _make_windows_relative_runtime_config(self, config_path):
+        """Create a runtime config with root_dir='.' to keep Snakemake metadata paths short."""
+        if sys.platform != 'win32' or not config_path:
+            return config_path, None
+
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_data = yaml.safe_load(f)
+
+            dataset = config_data.get('dataset', {})
+            dataset_root = dataset.get('root_dir') or config_data.get('root_dir')
+            if not dataset_root:
+                return config_path, None
+
+            dataset_root = os.path.normpath(dataset_root)
+            dataset['root_dir'] = '.'
+            config_data['dataset'] = dataset
+            if 'root_dir' in config_data:
+                config_data['root_dir'] = '.'
+
+            config_dir = os.path.dirname(config_path)
+            runtime_config_path = os.path.join(config_dir, 'snakemake_config_runtime.yaml')
+            with open(runtime_config_path, 'w', encoding='utf-8') as f:
+                yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
+
+            return runtime_config_path, dataset_root
+        except Exception as e:
+            print(f"WARNING: Could not create relative runtime config: {e}")
+            return config_path, None
+
     def _snakemake_run_pipeline(self):
         """Handle Run Pipeline menu action"""
         # Check if setup has been done
@@ -2540,6 +2574,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 self.current_selection_subject = None
                 self.current_selection_task = None
                 self.current_selection_run = None
+
+            snakemake_workdir = None
+            output_base_dir = None
+            config_path, runtime_workdir = self._make_windows_relative_runtime_config(config_path)
+            if runtime_workdir:
+                snakemake_workdir = runtime_workdir
+                output_base_dir = runtime_workdir
             
             if config_path:
                 cmd.extend(['--configfile', config_path])
@@ -2574,7 +2615,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     conda_env
                 )
                 print(f"DEBUG: Unlock command: {subprocess.list2cmdline(unlock_cmd)}")
-                unlock_result = subprocess.run(unlock_cmd, capture_output=True, text=True, timeout=30)
+                unlock_result = subprocess.run(unlock_cmd, capture_output=True, text=True, timeout=30, cwd=snakemake_workdir)
                 if unlock_result.returncode == 0:
                     print("Workflow directory unlocked successfully")
                 else:
@@ -2587,7 +2628,13 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 summary_config = config_path  # Use same config as execution (temp if current selection only)
                 config_type = "temp (current selection)" if run_current_only else "full"
                 print(f"Running summary for {config_type} config scope...")
-                file_status_map = self._run_snakemake_summary(snakefile_path, summary_config, target_rule)
+                file_status_map = self._run_snakemake_summary(
+                    snakefile_path,
+                    summary_config,
+                    target_rule,
+                    workdir=snakemake_workdir,
+                    output_base_dir=output_base_dir
+                )
 
                 if file_status_map:
                     print(f"Summary found {len(file_status_map)} workflow files in current scope")
@@ -2652,12 +2699,15 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                         [os.environ.get('COMSPEC', r'C:\Windows\System32\cmd.exe'),
                          '/k', console_command],
                         creationflags=subprocess.CREATE_NEW_CONSOLE,
+                        cwd=snakemake_workdir,
                     )
 
                     # Only monitor actual pipeline runs, not dry runs or summaries
                     if not dry_run and not show_summary:
                         # Store the actual config path used (temp or original) for monitoring
                         self._actual_config_used = config_path
+                        self._actual_snakemake_workdir = snakemake_workdir
+                        self._actual_output_base_dir = output_base_dir
 
                         # Wait for snakemake process to start with retries
                         import time
@@ -5905,7 +5955,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             self.all_scope_files = {}
             self.file_status_map = {}
     
-    def _run_snakemake_summary(self, snakefile_path, config_path, target_rule='all_default'):
+    def _run_snakemake_summary(self, snakefile_path, config_path, target_rule='all_default', workdir=None, output_base_dir=None):
         """Run snakemake with --summary to get status of all workflow files"""
         try:
             # Build command with conda activation if environment is set
@@ -5924,7 +5974,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                cwd=workdir
             )
             
             
@@ -5958,6 +6009,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     
                     # Normalize path to handle Windows paths
                     file_path = os.path.normpath(file_path)
+                    if output_base_dir and not os.path.isabs(file_path):
+                        file_path = os.path.normpath(os.path.join(output_base_dir, file_path))
                     
                     file_status_map[file_path] = {
                         'date': date_str,
@@ -6179,6 +6232,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             # Determine which config to use for monitoring
             # In "run current only" mode, use the temp config
             monitor_config = getattr(self, '_actual_config_used', self.snakemake_config_path)
+            monitor_workdir = getattr(self, '_actual_snakemake_workdir', None)
+            monitor_output_base_dir = getattr(self, '_actual_output_base_dir', None)
             
             if self.run_current_only_mode:
                 pass
@@ -6197,7 +6252,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     self.snakefile_path,
                     monitor_config,
                     self.conda_env,
-                    target_rule
+                    target_rule,
+                    workdir=monitor_workdir,
+                    output_base_dir=monitor_output_base_dir
                 )
                 self.summary_worker.summary_completed.connect(self._on_summary_completed)
                 self.summary_worker.summary_failed.connect(self._on_summary_failed)
@@ -6355,10 +6412,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 if self.snakefile_path and self.snakemake_config_path:
                     # Use temp config for final summary in "run current only" mode
                     # This checks the file we actually processed, not all files in original config
-                    if self.run_current_only_mode and hasattr(self, '_actual_config_used'):
-                        final_summary_config = self._actual_config_used  # temp config
-                    else:
-                        final_summary_config = self.snakemake_config_path
+                    final_summary_config = getattr(self, '_actual_config_used', self.snakemake_config_path)
+                    final_summary_workdir = getattr(self, '_actual_snakemake_workdir', None)
+                    final_summary_output_base_dir = getattr(self, '_actual_output_base_dir', None)
                     
                     # Use the same target rule that was used to start the pipeline
                     target_rule = self._resolve_target_rule(self.pipeline_status.get('target_rule', 'all_default'))
@@ -6366,7 +6422,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                     file_status_map = self._run_snakemake_summary(
                         self.snakefile_path,
                         final_summary_config,
-                        target_rule
+                        target_rule,
+                        workdir=final_summary_workdir,
+                        output_base_dir=final_summary_output_base_dir
                     )
                     
                     # In "run current only" mode, MERGE results (don't replace entire scope)
