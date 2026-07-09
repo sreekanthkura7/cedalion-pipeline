@@ -2544,12 +2544,6 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if config_path:
                 cmd.extend(['--configfile', config_path])
 
-            # Long absolute output paths can exceed Windows' per-filename limit
-            # when Snakemake Base64-encodes them for provenance metadata.
-            # Outputs and normal dependency checks are unaffected.
-            if sys.platform == 'win32':
-                cmd.append('--drop-metadata')
-            
             if dry_run:
                 cmd.append('-n')
             

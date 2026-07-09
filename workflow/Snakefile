@@ -1,8 +1,6 @@
 # Snakefile
 from snakemake.io import glob_wildcards
 import os
-import hashlib
-import json
 from os.path import join
 from pathlib import Path
 
@@ -37,57 +35,6 @@ if "run_list" in config["dataset"]:
 else:
     # Backward compatibility: generate from num_runs if run_list not provided
     config["dataset"]["run"] = [f"{i:02d}" for i in range(1, int(config["dataset"]["num_runs"]) + 1)]
-
-
-def _json_default(value):
-    return str(value)
-
-
-def _config_stamp(stage_name, payload):
-    """Create a short-path input file whose name changes when stage config changes."""
-    stamp_dir = join(SAVE_DIR, "Outputs", ".config_stamps")
-    os.makedirs(stamp_dir, exist_ok=True)
-
-    payload_json = json.dumps(payload, sort_keys=True, default=_json_default, indent=2)
-    digest = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()[:16]
-    stamp_path = join(stamp_dir, f"{stage_name}_{digest}.stamp")
-
-    if not os.path.exists(stamp_path):
-        with open(stamp_path, "w", encoding="utf-8") as f:
-            f.write(payload_json)
-            f.write("\n")
-
-    return stamp_path
-
-
-PREPROCESS_CONFIG_STAMP = _config_stamp(
-    "preprocess",
-    {
-        "preprocess": config["preprocess"],
-        "stim_lst": config["hrf_estimation"].get("stim_lst"),
-    },
-)
-HRF_CONFIG_STAMP = _config_stamp(
-    "hrf_estimation",
-    {
-        "hrf_estimation": config["hrf_estimation"],
-    },
-)
-GROUPAVERAGE_CONFIG_STAMP = _config_stamp(
-    "groupaverage",
-    {
-        "groupaverage": config["groupaverage"],
-        "hrf_estimation": config["hrf_estimation"],
-        "prune_enabled": config["preprocess"]["steps"]["prune"]["enable"],
-    },
-)
-IMAGE_RECON_CONFIG_STAMP = _config_stamp(
-    "image_recon",
-    {
-        "image_recon": config["image_recon"],
-        "hrf_estimation": config["hrf_estimation"],
-    },
-)
 
 
 def get_imagerecon_output(): # create file name for image recon output
@@ -188,9 +135,7 @@ rule preprocess:
         snirf = f"{ROOT}/sub-{{subject}}/nirs/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs.snirf",
         events = f"{ROOT}/sub-{{subject}}/nirs/sub-{{subject}}_task-{{task}}_run-{{run}}_events.tsv",
         module1 = SNAKEFILE_DIR / "scripts/modules/module_preprocess.py",
-        module2 = SNAKEFILE_DIR / "scripts/modules/module_plot_DQR.py",
-        script = SNAKEFILE_DIR / "scripts/preprocess.py",
-        config_stamp = PREPROCESS_CONFIG_STAMP,
+        module2 = SNAKEFILE_DIR / "scripts/modules/module_plot_DQR.py"
     output:
         snirf = (f"{SAVE_DIR}/Outputs/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_preprocessed.snirf"), # preprocessed snirf
         sidecar = (f"{SAVE_DIR}/Outputs/preprocessed_data/sub-{{subject}}/sub-{{subject}}_task-{{task}}_run-{{run}}_nirs_dataquality.nc"), # data qual sidecar
@@ -227,9 +172,7 @@ rule hrf_estimation:
     input:
         preproc  = lambda wc: all_preprocessed_runs(wc)["preproc"],
         quality  = lambda wc: all_preprocessed_runs(wc)["quality"],
-        script = SNAKEFILE_DIR / "scripts/hrf_estimation.py",
         module3 = SNAKEFILE_DIR / "scripts/modules/module_hrf_est.py",
-        config_stamp = HRF_CONFIG_STAMP,
     output:
         net_hrf = get_hrf_output(),  
     params:
@@ -256,8 +199,6 @@ def all_hrf_files(wc):
 rule groupaverage:
     input: 
         hrf_subs  = lambda wc: all_hrf_files(wc)["hrf"], # block avg data
-        script = SNAKEFILE_DIR / "scripts/groupaverage.py",
-        config_stamp = GROUPAVERAGE_CONFIG_STAMP,
     output:
         # group averaged data
         (f"{SAVE_DIR}/Outputs/group_results/task-{{task}}_nirs_groupaverage_chanspace_{config['hrf_estimation']['rec_str']}.nc")   
@@ -272,9 +213,7 @@ rule groupaverage:
 
 rule generate_sensitivity:
     input:
-        in1 = [],
-        script = SNAKEFILE_DIR / "scripts/generate_sensitivity_matrix.py",
-        config_stamp = IMAGE_RECON_CONFIG_STAMP,
+        in1 = []
     output:
         Adot = protected(join(ROOT, 'derivatives', 'cedalion', 'forward', config['image_recon']['generate_sensitivity']['sub_folder'], 'sensitivity.nc')),
     resources:
@@ -289,9 +228,7 @@ rule generate_sensitivity:
 if config['image_recon']['spatial_basis']['enable']: # run generate sbf rule if enable is true
     rule generate_sbf:
         input:
-            Adot = ancient(rules.generate_sensitivity.output),
-            script = SNAKEFILE_DIR / "scripts/generate_sbf.py",
-            config_stamp = IMAGE_RECON_CONFIG_STAMP,
+            Adot = ancient(rules.generate_sensitivity.output)
         output: # CHANGE file ext when save and load sbf in ced updated
             join(ROOT, 'derivatives', 'cedalion', 'forward', config['image_recon']['generate_sensitivity']['sub_folder'], 'sbf.nc')
         params:
@@ -312,8 +249,6 @@ rule imagerecon:
         hrf_data = rules.hrf_estimation.output.net_hrf,
         Adot = ancient(rules.generate_sensitivity.output.Adot),
         SB = get_optional_input(config['image_recon']['spatial_basis']['enable']),
-        script = SNAKEFILE_DIR / "scripts/image_recon.py",
-        config_stamp = IMAGE_RECON_CONFIG_STAMP,
     output:
         get_imagerecon_output()
     params:
