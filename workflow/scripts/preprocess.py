@@ -76,7 +76,41 @@ def _parse_dpf_values(dpf_config, wavelengths):
     return dpf_values
 
 
+def _validate_preprocess_dependencies(cfg_preprocess):
+    """Fail early when enabled preprocessing steps depend on disabled upstream steps."""
+    steps = cfg_preprocess.get("steps", {})
+    int2od_enabled = steps.get("int2od", {}).get("enable", False)
+    od_dependent_steps = (
+        "tddr",
+        "splineSG",
+        "motion_correct_splineSG",
+        "PCA_recurse",
+        "motion_correct_PCA_recurse",
+        "wavelet",
+        "motion_correct_wavelet",
+        "freq_filter",
+        "od2conc",
+        "DQR_plot",
+        "plot_DQR",
+        "plot_dqr",
+        "dqr_plot",
+    )
+    enabled_dependents = [
+        step_name
+        for step_name in od_dependent_steps
+        if steps.get(step_name, {}).get("enable", False)
+    ]
+    if enabled_dependents and not int2od_enabled:
+        raise ValueError(
+            "Invalid preprocess configuration: "
+            f"{', '.join(enabled_dependents)} require optical density data. "
+            "Enable preprocess.steps.int2od or disable the downstream OD/conc steps."
+        )
+
+
 def preprocess_func(snirf_path, events_path, root_dir, derivatives_subfolder, cfg_preprocess, stim_lst, out_files):
+    _validate_preprocess_dependencies(cfg_preprocess)
+
     cedalion.xrutils.unit_stripping_is_error(True)
     # Load in snirf file
     
