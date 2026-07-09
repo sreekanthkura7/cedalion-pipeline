@@ -35,6 +35,10 @@ if not root_dir:
 
 print(f"✓ BIDS root directory: {root_dir}")
 
+# Change working directory to root_dir
+os.chdir(root_dir)
+print(f"✓ Changed working directory to: {os.getcwd()}")
+
 # ========================================
 # STEP 2: Check/create derivatives/cedalion
 # ========================================
