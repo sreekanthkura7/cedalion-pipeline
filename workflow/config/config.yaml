@@ -46,7 +46,7 @@ hrf_estimation:
   stim_lst: ["STS_Q"]  # list of stims from events.tsv you want to estimate the HRF of
   t_pre: "2 second"  # time before stim onset you want to model 
   t_post: "35 second"  # time after stim onset you want to model
-  rec_str: "conc"  # conc or od_corrected  - what you want to block average
+  rec_str: "conc"  # conc or od  - what you want to block average
   GLM:
     enable: true  # if true do GLM, false do block averaging
     do_drift: false  # if true, does normal drift correction, false does not

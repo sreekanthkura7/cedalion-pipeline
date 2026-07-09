@@ -44,7 +44,7 @@ preprocess:
       enable: true
 
 hrf_estimation:   #  !!! make these constants instead?
-  rec_str: "conc"   # MUST BE 'conc' OR 'od_02'    - what you want to block average
+  rec_str: "conc"   # MUST BE 'conc' OR 'od'    - what you want to block average
   stim_lst: ["left", "right"]  # list of stims from events.tsv you want to estimate the HRF of
   t_pre: "2 second"   # time before stim onset you want to model  #!!! can we make this a list for diff trial types for GLM
   t_post: "10 second" # time after stim onset you want to model
@@ -110,7 +110,6 @@ image_recon:   # need to create sensitivity matrix first. Not included here yet.
 
 
 
-  
   
   
   
