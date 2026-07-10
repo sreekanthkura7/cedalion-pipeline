@@ -359,13 +359,15 @@ class ConfigEditorDialog(QtWidgets.QDialog):
             
             # Calculate matching runs based on task pattern
             # Count runs in file_map that match the task for non-excluded subjects
+            # Use BIDS naming convention: task-<name>_ to ensure exact task match
             num_matching_runs = 0
             if task_text:  # Only count if task is specified
                 for subject in matching_subjects:
                     if subject in self.file_map:
                         for run in self.file_map[subject].keys():
-                            # Check if run matches task pattern
-                            if f"task-{task_text}" in run:
+                            # Check if run matches task pattern using BIDS convention
+                            # Task name is bounded by 'task-' and '_'
+                            if f"task-{task_text}_" in run:
                                 num_matching_runs += 1
             
             # Format and display the information
