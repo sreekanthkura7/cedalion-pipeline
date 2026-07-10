@@ -175,6 +175,13 @@ class ConfigEditorDialog(QtWidgets.QDialog):
             layout.addWidget(self.matching_info_label)
             # Calculate initial matching info
             self._update_matching_info()
+            
+            # Add "Update Dataset Info" button for dataset configuration
+            update_button = QtWidgets.QPushButton("🔄 Update Dataset Info")
+            update_button.setToolTip("Re-scan available subjects, tasks, and runs from BIDS folder")
+            update_button.setMaximumWidth(200)
+            update_button.clicked.connect(self._update_dataset_info)
+            layout.addWidget(update_button)
         
         # Add buttons
         button_box = QtWidgets.QDialogButtonBox(
@@ -374,6 +381,62 @@ class ConfigEditorDialog(QtWidgets.QDialog):
         except Exception as e:
             print(f"Error updating matching info: {e}")
             self.matching_info_label.setText("⚠️ Error calculating matches")
+    
+    def _update_dataset_info(self):
+        """Update dataset tooltips by re-scanning available data from parent GUI"""
+        if not self.parent():
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Cannot Update",
+                "Cannot access parent GUI to update dataset info."
+            )
+            return
+        
+        try:
+            # Get updated tooltips from parent
+            parent_gui = self.parent()
+            if hasattr(parent_gui, '_generate_dataset_tooltips'):
+                new_tooltips = parent_gui._generate_dataset_tooltips()
+                
+                # Update field_tooltips
+                self.field_tooltips.update(new_tooltips)
+                
+                # Update tooltips on existing form labels
+                for i in range(self.form_layout.rowCount()):
+                    label_item = self.form_layout.itemAt(i, QtWidgets.QFormLayout.LabelRole)
+                    if label_item:
+                        label_widget = label_item.widget()
+                        if isinstance(label_widget, QtWidgets.QLabel):
+                            # Extract field key from label text
+                            label_text = label_widget.text().rstrip(':')
+                            if label_text in new_tooltips:
+                                label_widget.setToolTip(new_tooltips[label_text])
+                
+                # Update matching info as well
+                self._update_matching_info()
+                
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Dataset Info Updated",
+                    "Dataset information has been refreshed from the BIDS folder.\n"
+                    "Hover over field labels to see updated available options."
+                )
+            else:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Cannot Update",
+                    "Parent GUI does not support dataset info updates."
+                )
+        
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Update Error",
+                f"Error updating dataset info:\n{str(e)}"
+            )
+            print(f"Error in _update_dataset_info: {e}")
+            import traceback
+            traceback.print_exc()
     
     def get_updated_data(self):
         """Extract updated values from form widgets"""
@@ -3374,6 +3437,11 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             
             # Extract field tooltips from comments
             field_tooltips = self._extract_field_comments(original_lines, block_name)
+            
+            # For dataset block, add dynamic tooltips based on available data
+            if block_name == 'dataset':
+                dataset_tooltips = self._generate_dataset_tooltips()
+                field_tooltips.update(dataset_tooltips)
 
             if block_name == 'preprocess':
                 od2conc_cfg = (
@@ -3416,6 +3484,65 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 "Error",
                 f"Error editing configuration:\n{str(e)}"
             )
+    
+    def _generate_dataset_tooltips(self):
+        """Generate tooltips for dataset fields based on available data"""
+        tooltips = {}
+        
+        if not self.file_map or not self.subjects:
+            return tooltips
+        
+        try:
+            # Extract available subjects
+            available_subjects = sorted(self.subjects)
+            subjects_str = ', '.join(available_subjects)
+            
+            # Extract available tasks
+            tasks = set()
+            runs = set()
+            for subject in self.file_map.values():
+                for run_key in subject.keys():
+                    # Extract task from run_key (e.g., "task-racing_run-01")
+                    if 'task-' in run_key:
+                        task_part = run_key.split('task-')[1]
+                        task = task_part.split('_')[0]
+                        tasks.add(task)
+                    # Extract run number
+                    if 'run-' in run_key:
+                        run_part = run_key.split('run-')[1]
+                        run = run_part.split('_')[0]  # Get just the number
+                        runs.add(run)
+            
+            tasks_str = ', '.join(sorted(tasks)) if tasks else 'None'
+            runs_str = ', '.join(sorted(runs)) if runs else 'None'
+            
+            # Generate tooltips
+            tooltips['subjects_to_exclude'] = (
+                f"Available subjects in dataset: {subjects_str}\n\n"
+                f"Enter subject IDs to exclude (comma-separated).\n"
+                f"Example: 752, 753 or sub-752, sub-753"
+            )
+            
+            tooltips['task'] = (
+                f"Available tasks in dataset: {tasks_str}\n\n"
+                f"Specify which task to process from the SNIRF files."
+            )
+            
+            tooltips['run_list'] = (
+                f"Available runs in dataset: {runs_str}\n\n"
+                f"List of run numbers to include (comma-separated).\n"
+                f"Example: ['01', '02'] or leave empty for all runs"
+            )
+            
+            tooltips['num_runs'] = (
+                f"Available runs in dataset: {runs_str}\n\n"
+                f"Number of runs per subject to process."
+            )
+            
+        except Exception as e:
+            print(f"Error generating dataset tooltips: {e}")
+        
+        return tooltips
 
     def _extract_field_comments(self, original_lines, block_name):
         """Extract comments from YAML file and map them to field keys"""
