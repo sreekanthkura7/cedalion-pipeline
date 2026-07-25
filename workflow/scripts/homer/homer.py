@@ -3,101 +3,129 @@ import os
 import re
 import pickle
 import gzip
+import sys
 import time_series_gui
 from tkinter import filedialog
 import tkinter as tk
 #%% Define paths and extract data information
 
 # ========================================
-# STEP 1: Select BIDS root directory
+# Check for command-line argument (pipeline path from relaunch)
 # ========================================
-print("\n" + "="*70)
-print("STEP 1: SELECT BIDS ROOT DIRECTORY")
-print("="*70)
-print("Please select the BIDS root directory (where sub-XXX folders are located)")
-print("(The dialog window may be in the background - check your taskbar)")
-print("="*70 + "\n")
-
-current_dir = os.getcwd()
-root = tk.Tk()
-root.withdraw()  # Hide the main window
-
-root_dir = filedialog.askdirectory(
-    title="Step 1: Select BIDS Root Directory (where sub-XXX folders are)",
-    initialdir=current_dir
-)
-root.destroy()
-
-# Check if user cancelled the dialog
-if not root_dir:
-    print("No directory selected. Exiting...")
-    exit()
-
-print(f"✓ BIDS root directory: {root_dir}")
-
-# Change working directory to root_dir
-os.chdir(root_dir)
-print(f"✓ Changed working directory to: {os.getcwd()}")
-
-# ========================================
-# STEP 2: Check/create derivatives/cedalion
-# ========================================
-print("\n" + "="*70)
-print("STEP 2: CHECKING DERIVATIVES STRUCTURE")
-print("="*70)
-
-derivatives_path = os.path.join(root_dir, 'derivatives')
-cedalion_path = os.path.join(derivatives_path, 'cedalion')
-
-if not os.path.exists(cedalion_path):
-    print(f"Creating: {cedalion_path}")
-    os.makedirs(cedalion_path, exist_ok=True)
-    print("✓ Created derivatives/cedalion/ directory")
+if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
+    # Pipeline path provided - skip folder selection dialogs
+    path_to_data = sys.argv[1]
+    print("\n" + "="*70)
+    print("RELAUNCHING GUI WITH PIPELINE")
+    print("="*70)
+    print(f"Pipeline folder: {path_to_data}")
+    print("="*70 + "\n")
+    
+    # Extract root_dir by going up from derivatives/cedalion/{pipeline}
+    # path_to_data should be: /path/to/bids/derivatives/cedalion/{pipeline}
+    normalized_path = os.path.normpath(path_to_data)
+    cedalion_path = os.path.dirname(normalized_path)  # derivatives/cedalion
+    derivatives_path = os.path.dirname(cedalion_path)  # derivatives
+    root_dir = os.path.dirname(derivatives_path)  # BIDS root
+    
+    print(f"✓ Extracted BIDS root: {root_dir}")
+    
+    # Change working directory to root_dir
+    os.chdir(root_dir)
+    print(f"✓ Changed working directory to: {os.getcwd()}")
+    
 else:
-    print(f"✓ Found existing: {cedalion_path}")
+    # No argument provided - run normal folder selection
+    # ========================================
+    # STEP 1: Select BIDS root directory
+    # ========================================
+    print("\n" + "="*70)
+    print("STEP 1: SELECT BIDS ROOT DIRECTORY")
+    print("="*70)
+    print("Please select the BIDS root directory (where sub-XXX folders are located)")
+    print("(The dialog window may be in the background - check your taskbar)")
+    print("="*70 + "\n")
 
-# ========================================
-# STEP 3: Select/create pipeline folder
-# ========================================
-print("\n" + "="*70)
-print("STEP 3: SELECT OR CREATE PIPELINE FOLDER")
-print("="*70)
-print("Select an existing pipeline folder OR create a new one")
-print("inside 'derivatives/cedalion/'")
-print("(The dialog window may be in the background - check your taskbar)")
-print("="*70 + "\n")
+    current_dir = os.getcwd()
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
 
-root = tk.Tk()
-root.withdraw()  # Hide the main window
+    root_dir = filedialog.askdirectory(
+        title="Step 1: Select BIDS Root Directory (where sub-XXX folders are)",
+        initialdir=current_dir
+    )
+    root.destroy()
 
-path_to_data = filedialog.askdirectory(
-    title="Step 3: Select or Create Pipeline Folder in derivatives/cedalion/",
-    initialdir=cedalion_path
-)
-root.destroy()
+    # Check if user cancelled the dialog
+    if not root_dir:
+        print("No directory selected. Exiting...")
+        exit()
 
-# Check if user cancelled the dialog
-if not path_to_data:
-    print("No pipeline folder selected. Exiting...")
-    exit()
+    print(f"✓ BIDS root directory: {root_dir}")
 
-print(f"✓ Pipeline folder: {path_to_data}")
+    # Change working directory to root_dir
+    os.chdir(root_dir)
+    print(f"✓ Changed working directory to: {os.getcwd()}")
 
-# Verify the selected folder is within derivatives/cedalion
-# Normalize paths for cross-platform comparison
-normalized_path_to_data = os.path.normpath(path_to_data)
-normalized_cedalion_path = os.path.normpath(cedalion_path)
+    # ========================================
+    # STEP 2: Check/create derivatives/cedalion
+    # ========================================
+    print("\n" + "="*70)
+    print("STEP 2: CHECKING DERIVATIVES STRUCTURE")
+    print("="*70)
 
-if not normalized_path_to_data.startswith(normalized_cedalion_path):
-    print("\n⚠️  WARNING: Selected folder is not inside derivatives/cedalion/")
-    print(f"   Selected: {normalized_path_to_data}")
-    print(f"   Expected to be inside: {normalized_cedalion_path}")
-    print("   Continuing anyway, but this may cause issues...")
+    derivatives_path = os.path.join(root_dir, 'derivatives')
+    cedalion_path = os.path.join(derivatives_path, 'cedalion')
 
-print("\n" + "="*70)
-print("FOLDER SETUP COMPLETE")
-print("="*70)
-print(f"BIDS Root:       {root_dir}")
+    if not os.path.exists(cedalion_path):
+        print(f"Creating: {cedalion_path}")
+        os.makedirs(cedalion_path, exist_ok=True)
+        print("✓ Created derivatives/cedalion/ directory")
+    else:
+        print(f"✓ Found existing: {cedalion_path}")
+
+    # ========================================
+    # STEP 3: Select/create pipeline folder
+    # ========================================
+    print("\n" + "="*70)
+    print("STEP 3: SELECT OR CREATE PIPELINE FOLDER")
+    print("="*70)
+    print("Select an existing pipeline folder OR create a new one")
+    print("inside 'derivatives/cedalion/'")
+    print("(The dialog window may be in the background - check your taskbar)")
+    print("="*70 + "\n")
+
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+
+    path_to_data = filedialog.askdirectory(
+        title="Step 3: Select or Create Pipeline Folder in derivatives/cedalion/",
+        initialdir=cedalion_path
+    )
+    root.destroy()
+
+    # Check if user cancelled the dialog
+    if not path_to_data:
+        print("No pipeline folder selected. Exiting...")
+        exit()
+
+    print(f"✓ Pipeline folder: {path_to_data}")
+
+    # Verify the selected folder is within derivatives/cedalion
+    # Normalize paths for cross-platform comparison
+    normalized_path_to_data = os.path.normpath(path_to_data)
+    normalized_cedalion_path = os.path.normpath(cedalion_path)
+
+    if not normalized_path_to_data.startswith(normalized_cedalion_path):
+        print("\n⚠️  WARNING: Selected folder is not inside derivatives/cedalion/")
+        print(f"   Selected: {normalized_path_to_data}")
+        print(f"   Expected to be inside: {normalized_cedalion_path}")
+        print("   Continuing anyway, but this may cause issues...")
+
+    print("\n" + "="*70)
+    print("FOLDER SETUP COMPLETE")
+    print("="*70)
+    print(f"BIDS Root:       {root_dir}")
 print(f"Pipeline Folder: {path_to_data}")
 print("="*70 + "\n")
 

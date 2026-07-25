@@ -141,6 +141,7 @@ class ConfigEditorDialog(QtWidgets.QDialog):
         self.field_widgets = {}
         self.file_map = file_map  # For dataset matching calculations
         self.subjects = subjects  # Full subject list from GUI
+        self.original_derivatives_subfolder = config_data.get('derivatives_subfolder', '')  # Track original for switch detection
         
         self.setWindowTitle(f"Edit {block_name.replace('_', ' ').title()} Configuration")
         self.setMinimumWidth(600)
@@ -267,6 +268,30 @@ class ConfigEditorDialog(QtWidgets.QDialog):
     
     def _create_widget(self, value, readonly=False, key=None):
         """Create appropriate widget based on value type"""
+        # Special handling for derivatives_subfolder in dataset block
+        if key == 'derivatives_subfolder' and self.block_name == 'dataset' and not readonly:
+            widget = QtWidgets.QComboBox()
+            widget.setEditable(True)  # Allow typing new folder names
+            widget.setInsertPolicy(QtWidgets.QComboBox.NoInsert)  # Don't auto-add typed values
+            
+            # Populate with available pipeline folders
+            available_pipelines = self._get_available_pipelines()
+            if available_pipelines:
+                widget.addItems(available_pipelines)
+            
+            # Set current value
+            current_value = str(value) if value else ""
+            if current_value:
+                # Set to current value (will add if not in list)
+                index = widget.findText(current_value)
+                if index >= 0:
+                    widget.setCurrentIndex(index)
+                else:
+                    widget.setEditText(current_value)
+            
+            widget.setToolTip("Select existing pipeline or type new folder name")
+            return widget
+        
         if isinstance(value, bool):
             widget = QtWidgets.QCheckBox()
             widget.setChecked(value)
@@ -440,6 +465,39 @@ class ConfigEditorDialog(QtWidgets.QDialog):
             import traceback
             traceback.print_exc()
     
+    def _get_available_pipelines(self):
+        """Get list of available pipeline folders from derivatives/cedalion/"""
+        available_pipelines = []
+        
+        try:
+            # Get root_dir and cedalion path from parent GUI
+            parent_gui = self.parent()
+            if not parent_gui or not hasattr(parent_gui, 'path_to_data'):
+                return available_pipelines
+            
+            # Get the root_dir from config
+            root_dir = self.config_data.get('root_dir', '')
+            if not root_dir or not os.path.exists(root_dir):
+                return available_pipelines
+            
+            cedalion_path = os.path.join(root_dir, 'derivatives', 'cedalion')
+            if not os.path.exists(cedalion_path):
+                return available_pipelines
+            
+            # List all subdirectories in derivatives/cedalion/
+            for item in os.listdir(cedalion_path):
+                item_path = os.path.join(cedalion_path, item)
+                if os.path.isdir(item_path):
+                    available_pipelines.append(item)
+            
+            # Sort for consistent display
+            available_pipelines.sort()
+            
+        except Exception as e:
+            print(f"Error getting available pipelines: {e}")
+        
+        return available_pipelines
+    
     def get_updated_data(self):
         """Extract updated values from form widgets"""
         updated = {}
@@ -450,6 +508,9 @@ class ConfigEditorDialog(QtWidgets.QDialog):
             # Get the new value from widget
             if isinstance(widget, QtWidgets.QCheckBox):
                 new_value = widget.isChecked()
+            elif isinstance(widget, QtWidgets.QComboBox):
+                # For QComboBox (used for derivatives_subfolder)
+                new_value = widget.currentText().strip()
             elif isinstance(widget, QtWidgets.QLineEdit):
                 text = widget.text().strip()
                 if isinstance(original_value, list):
@@ -1524,6 +1585,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         # Load saved GUI state (subject, run, selections, etc.)
         if has_saved_state:
             self._load_gui_state()
+        
+        # Check if this is a relaunch after pipeline switch
+        self._check_pipeline_switch_state()
     
     def closeEvent(self, event):
         """Clean up resources when GUI is closed"""
@@ -2350,9 +2414,9 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             if not self.snakemake_config:
                 self._edit_config_minimal_dataset(config_path)
             else:
-                self._edit_config_block(config_path, 'dataset', readonly_keys=['root_dir', 'derivatives_subfolder'])
+                self._edit_config_block(config_path, 'dataset', readonly_keys=['root_dir'])
         else:
-            self._edit_config_block(self.snakemake_config_path, 'dataset', readonly_keys=['root_dir', 'derivatives_subfolder'])
+            self._edit_config_block(self.snakemake_config_path, 'dataset', readonly_keys=['root_dir'])
         
     def _snakemake_config_item(self, block_name):
         """Handle dynamic config menu action"""
@@ -3237,6 +3301,57 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             traceback.print_exc()
             self._restoring_state = False
     
+    def _check_pipeline_switch_state(self):
+        """Check if GUI was relaunched after a pipeline switch and show notification"""
+        try:
+            if not self.path_to_data or not os.path.exists(self.path_to_data):
+                return
+            
+            switch_state_file = os.path.join(self.path_to_data, '.pipeline_switch_state')
+            
+            if not os.path.exists(switch_state_file):
+                return  # No pending switch
+            
+            # Read the switch state
+            with open(switch_state_file, 'r') as f:
+                lines = f.readlines()
+                switched_path = lines[0].strip() if len(lines) > 0 else None
+                was_new = bool(int(lines[1].strip())) if len(lines) > 1 else False
+            
+            # Delete the state file
+            try:
+                os.remove(switch_state_file)
+                print(f"Removed pipeline switch state file")
+            except:
+                pass
+            
+            # Show notification
+            pipeline_name = os.path.basename(self.path_to_data)
+            
+            if was_new:
+                # Show reminder for new pipelines
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Pipeline Switched",
+                    f"✓ Successfully switched to new pipeline:\n{pipeline_name}\n\n"
+                    "⚠️ This pipeline needs configuration!\n\n"
+                    "Next steps:\n"
+                    "1. Go to: Snakemake → Setup Pipeline\n"
+                    "2. Select Snakefile and create config\n"
+                    "3. Configure your pipeline settings"
+                )
+            else:
+                # Just show success message for existing pipelines
+                self.statbar.showMessage(f"✓ Switched to pipeline: {pipeline_name}", 5000)
+                print(f"\\n{'='*70}")
+                print(f"PIPELINE SWITCH SUCCESSFUL: {pipeline_name}")
+                print(f"{'='*70}\\n")
+                
+        except Exception as e:
+            print(f"Warning: Error checking pipeline switch state: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def _load_snakemake_config(self, snakefile_path, config_path):
         """Load Snakemake config and update menu dynamically"""
         try:
@@ -3472,6 +3587,19 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 # Get updated data
                 updated_block = dialog.get_updated_data()
                 
+                # Check if derivatives_subfolder changed BEFORE saving
+                # We need to handle this specially to avoid corrupting the current pipeline's config
+                pipeline_switch_needed = False
+                new_derivatives_subfolder = None
+                
+                if block_name == 'dataset':
+                    new_derivatives_subfolder = updated_block.get('derivatives_subfolder', '')
+                    if new_derivatives_subfolder != dialog.original_derivatives_subfolder:
+                        pipeline_switch_needed = True
+                        # Don't save the derivatives_subfolder change to current config
+                        # Keep the original value for the current pipeline
+                        updated_block['derivatives_subfolder'] = dialog.original_derivatives_subfolder
+                
                 # Update the full config with the edited block
                 full_config[block_name] = updated_block
                 
@@ -3479,6 +3607,18 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
                 self._save_yaml_with_comments(config_path, full_config, original_lines, block_name)
                 
                 self.statbar.showMessage(f"{block_name.replace('_', ' ').title()} configuration saved!")
+                
+                # Now handle pipeline switch if needed
+                if pipeline_switch_needed:
+                    # Pass the updated config with the NEW derivatives_subfolder
+                    updated_block['derivatives_subfolder'] = new_derivatives_subfolder
+                    full_config[block_name] = updated_block
+                    
+                    self._handle_pipeline_switch(
+                        full_config['dataset']['root_dir'],
+                        new_derivatives_subfolder,
+                        full_config  # Pass the config to save to new location
+                    )
                 
         except Exception as e:
             QtWidgets.QMessageBox.critical(
@@ -3545,6 +3685,134 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             print(f"Error generating dataset tooltips: {e}")
         
         return tooltips
+
+    def _handle_pipeline_switch(self, root_dir, new_derivatives_subfolder, updated_config=None):
+        """Handle switching to a different pipeline folder
+        
+        Args:
+            root_dir: BIDS root directory
+            new_derivatives_subfolder: New pipeline folder name
+            updated_config: Config dict (not used - kept for compatibility)
+        """
+        try:
+            # Build new path_to_data
+            new_path_to_data = os.path.join(root_dir, 'derivatives', 'cedalion', new_derivatives_subfolder)
+            
+            # Create folder if it doesn't exist
+            created_new = False
+            if not os.path.exists(new_path_to_data):
+                os.makedirs(new_path_to_data, exist_ok=True)
+                print(f"Created new pipeline folder: {new_path_to_data}")
+                created_new = True
+                print(f"Note: New pipeline folder has no config - will need to be configured after switch")
+            else:
+                print(f"Switching to existing pipeline folder: {new_path_to_data}")
+            
+            # Confirm switch with user
+            msg = f"Switch to pipeline folder:\n{new_derivatives_subfolder}\n\n"
+            msg += "This will reload all data from the new pipeline location.\n"
+            if created_new:
+                msg += "\n⚠️  New pipeline folder created.\nYou'll need to configure it after switching:\nSnakemake → Setup Pipeline → Configure"
+            msg += "\nContinue?"
+            
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                'Switch Pipeline?',
+                msg,
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes
+            )
+            
+            if reply == QtWidgets.QMessageBox.Yes:
+                self._switch_pipeline(new_path_to_data, created_new)
+            else:
+                # User cancelled - clean up if we created a new folder
+                if created_new and os.path.exists(new_path_to_data):
+                    # Remove the newly created folder
+                    import shutil
+                    try:
+                        shutil.rmtree(new_path_to_data)
+                        print(f"Removed cancelled pipeline folder: {new_path_to_data}")
+                    except Exception as e:
+                        print(f"Warning: Could not remove folder: {e}")
+                
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Switch Cancelled",
+                    "Pipeline switch cancelled. Your current pipeline settings remain unchanged."
+                )
+        
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Pipeline Switch Error",
+                f"Error switching pipeline:\\n{str(e)}"
+            )
+            print(f"Error in _handle_pipeline_switch: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _switch_pipeline(self, new_path_to_data, created_new=False):
+        """Switch to a new pipeline folder by relaunching the GUI"""
+        try:
+            print(f"\\n{'='*70}")
+            print(f"PREPARING TO SWITCH PIPELINE: {new_path_to_data}")
+            print(f"{'='*70}\\n")
+            
+            # Save the new path to a temporary state file for the relaunch
+            switch_state_file = os.path.join(new_path_to_data, '.pipeline_switch_state')
+            with open(switch_state_file, 'w') as f:
+                f.write(f"{new_path_to_data}\n")
+                f.write(f"{int(created_new)}\n")  # Store as 1 or 0
+            
+            print(f"Saved switch state to: {switch_state_file}")
+            
+            # Show user message
+            msg = f"Pipeline switch prepared.\n\n"
+            msg += f"The GUI will now restart to load:\n{os.path.basename(new_path_to_data)}\n\n"
+            if created_new:
+                msg += "⚠️  New pipeline folder created (no config yet).\nYou'll need to configure it after restart."
+            else:
+                msg += "All data will be loaded from the selected pipeline."
+            
+            QtWidgets.QMessageBox.information(
+                self,
+                "Restarting GUI",
+                msg
+            )
+            
+            # Relaunch the GUI with pipeline path as argument
+            python_exe = sys.executable
+            script_path = os.path.abspath(sys.argv[0])
+            
+            print(f"Relaunching: {python_exe} {script_path} {new_path_to_data}")
+            print(f"Working directory: {os.getcwd()}")
+            
+            # Launch new instance with pipeline path as argument
+            # Keep using same terminal, but close stdin to allow terminal to return
+            subprocess.Popen(
+                [python_exe, script_path, new_path_to_data],
+                cwd=os.getcwd(),
+                stdin=subprocess.DEVNULL  # Close stdin so parent can exit cleanly
+            )
+            
+            # Close current instance
+            print("Closing current GUI instance...")
+            print("New GUI instance starting...\n")
+            
+            # Force exit the entire application
+            QtWidgets.QApplication.quit()
+            sys.exit(0)  # Force clean exit of parent process
+            
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Switch Failed",
+                f"Failed to switch pipeline:\\n{str(e)}"
+            )
+            print(f"Error in _switch_pipeline: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _extract_field_comments(self, original_lines, block_name):
         """Extract comments from YAML file and map them to field keys"""
