@@ -270,7 +270,6 @@ class ConfigEditorDialog(QtWidgets.QDialog):
         """Create appropriate widget based on value type"""
         # Special handling for derivatives_subfolder in dataset block
         if key == 'derivatives_subfolder' and self.block_name == 'dataset' and not readonly:
-            print(f"Creating derivatives_subfolder dropdown widget with value: {value}")
             widget = QtWidgets.QComboBox()
             widget.setEditable(True)  # Allow typing new folder names
             widget.setInsertPolicy(QtWidgets.QComboBox.NoInsert)  # Don't auto-add typed values
@@ -281,7 +280,6 @@ class ConfigEditorDialog(QtWidgets.QDialog):
             
             # Populate with available pipeline folders
             available_pipelines = self._get_available_pipelines()
-            print(f"Available pipelines: {available_pipelines}")
             if available_pipelines:
                 widget.addItems(available_pipelines)
             
@@ -292,18 +290,11 @@ class ConfigEditorDialog(QtWidgets.QDialog):
                 index = widget.findText(current_value)
                 if index >= 0:
                     widget.setCurrentIndex(index)
-                    print(f"Set dropdown to existing value at index {index}: {current_value}")
                 else:
                     widget.setEditText(current_value)
-                    print(f"Set dropdown to custom value: {current_value}")
             elif len(available_pipelines) > 0:
                 # If no current value but pipelines exist, select first pipeline (not "Create New")
                 widget.setCurrentIndex(2)  # Index 0 is "Create New", 1 is separator, 2 is first pipeline
-                print(f"Set dropdown to first pipeline at index 2")
-            
-            print(f"Dropdown contains {widget.count()} items")
-            for i in range(widget.count()):
-                print(f"  Item {i}: {widget.itemText(i)}")
             
             # Connect signal to handle "Create New" selection
             # Store original value for reset purposes
@@ -2327,10 +2318,10 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         ## Spacer
         control_panel_layout.addStretch()
 
-        # Create button action for opening file
-        open_btn = QAction("Open...", self)
-        open_btn.setStatusTip("Open SNIRF file")
-        open_btn.triggered.connect(self._open_dialog)
+        # Create button action for changing dataset
+        change_dataset_btn = QAction("Change Dataset...", self)
+        change_dataset_btn.setStatusTip("Switch to a different BIDS dataset/pipeline")
+        change_dataset_btn.triggered.connect(self._change_dataset_dialog)
 
         ## Create menu
         # Use self.menuBar() for proper cross-platform menu bar support
@@ -2340,7 +2331,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         ## Populate menu
 
         file_menu = menu.addMenu("&File")
-        file_menu.addAction(open_btn)
+        file_menu.addAction(change_dataset_btn)
         
         # Create Snakemake menu with Setup first, then config items, then Run
         self.snakemake_menu = menu.addMenu("&Snakemake")
@@ -2371,6 +2362,146 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         if self.snirfRec is not None:
             self._init_widgets()
 
+    def _change_dataset_dialog(self):
+        """Open dialog to select a completely new BIDS dataset and pipeline"""
+        try:
+            # Step 1: Select BIDS root directory
+            msg = QtWidgets.QMessageBox()
+            msg.setIcon(QtWidgets.QMessageBox.Information)
+            msg.setWindowTitle("Change Dataset")
+            msg.setText("Select a new BIDS dataset")
+            msg.setInformativeText(
+                "You will:\n"
+                "1. Select a BIDS root directory (where sub-XXX folders are)\n"
+                "2. Select or create a pipeline folder\n\n"
+                "The GUI will restart with the new dataset."
+            )
+            msg.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+            
+            if msg.exec() != QtWidgets.QMessageBox.Ok:
+                return
+            
+            # Get current directory as starting point
+            current_dir = os.getcwd()
+            
+            # Open folder selection for BIDS root
+            new_bids_root = QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                "Step 1: Select BIDS Root Directory (where sub-XXX folders are)",
+                current_dir,
+                QtWidgets.QFileDialog.ShowDirsOnly | QtWidgets.QFileDialog.DontResolveSymlinks
+            )
+            
+            if not new_bids_root:
+                return  # User cancelled
+            
+            print(f"Selected BIDS root: {new_bids_root}")
+            
+            # Step 2: Check/create derivatives/cedalion
+            derivatives_path = os.path.join(new_bids_root, 'derivatives')
+            cedalion_path = os.path.join(derivatives_path, 'cedalion')
+            
+            if not os.path.exists(cedalion_path):
+                reply = QtWidgets.QMessageBox.question(
+                    self,
+                    "Create Derivatives Folder?",
+                    f"derivatives/cedalion/ does not exist in the selected dataset.\n\n"
+                    f"Create it now?",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.Yes
+                )
+                if reply == QtWidgets.QMessageBox.Yes:
+                    os.makedirs(cedalion_path, exist_ok=True)
+                    print(f"Created: {cedalion_path}")
+                else:
+                    return  # User cancelled
+            
+            # Step 3: Select or create pipeline folder
+            msg2 = QtWidgets.QMessageBox()
+            msg2.setIcon(QtWidgets.QMessageBox.Information)
+            msg2.setWindowTitle("Select Pipeline")
+            msg2.setText("Step 2: Select or create a pipeline folder")
+            msg2.setInformativeText(
+                f"Select a folder inside:\n{cedalion_path}\n\n"
+                "You can select an existing pipeline or create a new folder."
+            )
+            msg2.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+            
+            if msg2.exec() != QtWidgets.QMessageBox.Ok:
+                return
+            
+            new_pipeline_path = QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                "Step 2: Select or Create Pipeline Folder in derivatives/cedalion/",
+                cedalion_path,
+                QtWidgets.QFileDialog.ShowDirsOnly | QtWidgets.QFileDialog.DontResolveSymlinks
+            )
+            
+            if not new_pipeline_path:
+                return  # User cancelled
+            
+            # Verify the selected folder is within derivatives/cedalion
+            normalized_selected = os.path.normpath(new_pipeline_path)
+            normalized_cedalion = os.path.normpath(cedalion_path)
+            
+            if not normalized_selected.startswith(normalized_cedalion):
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Invalid Selection",
+                    f"Pipeline folder must be inside:\n{cedalion_path}\n\n"
+                    f"You selected:\n{normalized_selected}"
+                )
+                return
+            
+            print(f"Selected pipeline: {new_pipeline_path}")
+            
+            # Check if it's the same as current dataset/pipeline
+            if os.path.normpath(new_pipeline_path) == os.path.normpath(self.path_to_data):
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Same Dataset/Pipeline",
+                    "You selected the same dataset and pipeline that is currently loaded."
+                )
+                return
+            
+            # Check if pipeline folder is new
+            is_new = not os.path.exists(os.path.join(new_pipeline_path, 'snakemake_config.yaml'))
+            
+            # Confirm the change
+            pipeline_name = os.path.basename(new_pipeline_path)
+            dataset_name = os.path.basename(new_bids_root)
+            
+            msg = f"Change to:\n"
+            msg += f"  Dataset: {dataset_name}\n"
+            msg += f"  Pipeline: {pipeline_name}\n\n"
+            msg += "The GUI will restart and load data from this dataset.\n"
+            if is_new:
+                msg += "\n⚠️  This pipeline has no configuration yet.\n"
+                msg += "You'll need to set it up after switching."
+            msg += "\nContinue?"
+            
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                'Confirm Dataset Change',
+                msg,
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes
+            )
+            
+            if reply == QtWidgets.QMessageBox.Yes:
+                # Save switch state and relaunch
+                self._switch_pipeline(new_pipeline_path, is_new)
+            
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                f"Error changing dataset:\n{str(e)}"
+            )
+            print(f"Error in _change_dataset_dialog: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def _open_dialog(self):
         # Grab the appropriate SNIRF file
         self._fname = QtWidgets.QFileDialog.getOpenFileName(
