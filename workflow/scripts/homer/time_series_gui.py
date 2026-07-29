@@ -270,26 +270,49 @@ class ConfigEditorDialog(QtWidgets.QDialog):
         """Create appropriate widget based on value type"""
         # Special handling for derivatives_subfolder in dataset block
         if key == 'derivatives_subfolder' and self.block_name == 'dataset' and not readonly:
+            print(f"Creating derivatives_subfolder dropdown widget with value: {value}")
             widget = QtWidgets.QComboBox()
             widget.setEditable(True)  # Allow typing new folder names
             widget.setInsertPolicy(QtWidgets.QComboBox.NoInsert)  # Don't auto-add typed values
             
+            # Add "Create New Pipeline..." as first option
+            widget.addItem("📁 Create New Pipeline...")
+            widget.insertSeparator(1)  # Add separator after the create option
+            
             # Populate with available pipeline folders
             available_pipelines = self._get_available_pipelines()
+            print(f"Available pipelines: {available_pipelines}")
             if available_pipelines:
                 widget.addItems(available_pipelines)
             
-            # Set current value
+            # Set current value (skip the "Create New" option)
             current_value = str(value) if value else ""
             if current_value:
                 # Set to current value (will add if not in list)
                 index = widget.findText(current_value)
                 if index >= 0:
                     widget.setCurrentIndex(index)
+                    print(f"Set dropdown to existing value at index {index}: {current_value}")
                 else:
                     widget.setEditText(current_value)
+                    print(f"Set dropdown to custom value: {current_value}")
+            elif len(available_pipelines) > 0:
+                # If no current value but pipelines exist, select first pipeline (not "Create New")
+                widget.setCurrentIndex(2)  # Index 0 is "Create New", 1 is separator, 2 is first pipeline
+                print(f"Set dropdown to first pipeline at index 2")
             
-            widget.setToolTip("Select existing pipeline or type new folder name")
+            print(f"Dropdown contains {widget.count()} items")
+            for i in range(widget.count()):
+                print(f"  Item {i}: {widget.itemText(i)}")
+            
+            # Connect signal to handle "Create New" selection
+            # Store original value for reset purposes
+            widget.setProperty('original_value', current_value)
+            widget.currentTextChanged.connect(
+                lambda text, w=widget: self._handle_create_new_pipeline(w, text)
+            )
+            
+            widget.setToolTip("Select existing pipeline, type new name, or choose 'Create New Pipeline...'")
             return widget
         
         if isinstance(value, bool):
@@ -498,6 +521,55 @@ class ConfigEditorDialog(QtWidgets.QDialog):
         
         return available_pipelines
     
+    def _handle_create_new_pipeline(self, widget, text):
+        """Handle when user selects 'Create New Pipeline...'"""
+        if text == "📁 Create New Pipeline...":
+            # Get the original/previous value
+            original_value = widget.property('original_value') or ""
+            
+            # Prompt user for new pipeline folder name
+            new_name, ok = QtWidgets.QInputDialog.getText(
+                self,
+                "Create New Pipeline",
+                "Enter new pipeline folder name:",
+                QtWidgets.QLineEdit.Normal,
+                ""
+            )
+            
+            if ok and new_name:
+                # Validate folder name (no special characters except underscore and dash)
+                import re
+                if not re.match(r'^[a-zA-Z0-9_-]+$', new_name):
+                    QtWidgets.QMessageBox.warning(
+                        self,
+                        "Invalid Name",
+                        "Pipeline folder name can only contain letters, numbers, underscores, and dashes."
+                    )
+                    # Reset to original value
+                    widget.blockSignals(True)
+                    index = widget.findText(original_value)
+                    if index >= 0:
+                        widget.setCurrentIndex(index)
+                    else:
+                        widget.setEditText(original_value)
+                    widget.blockSignals(False)
+                    return
+                
+                # Set the new name in the combobox
+                widget.blockSignals(True)
+                widget.setEditText(new_name)
+                widget.setProperty('original_value', new_name)  # Update stored value
+                widget.blockSignals(False)
+            else:
+                # User cancelled - reset to original value
+                widget.blockSignals(True)
+                index = widget.findText(original_value)
+                if index >= 0:
+                    widget.setCurrentIndex(index)
+                else:
+                    widget.setEditText(original_value)
+                widget.blockSignals(False)
+    
     def get_updated_data(self):
         """Extract updated values from form widgets"""
         updated = {}
@@ -511,6 +583,9 @@ class ConfigEditorDialog(QtWidgets.QDialog):
             elif isinstance(widget, QtWidgets.QComboBox):
                 # For QComboBox (used for derivatives_subfolder)
                 new_value = widget.currentText().strip()
+                # Skip the "Create New Pipeline..." option
+                if new_value.startswith("📁 Create New Pipeline"):
+                    continue
             elif isinstance(widget, QtWidgets.QLineEdit):
                 text = widget.text().strip()
                 if isinstance(original_value, list):
