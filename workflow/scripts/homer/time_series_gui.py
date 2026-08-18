@@ -2245,7 +2245,14 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         self.image_recon_btn.setEnabled(False)  # Will be enabled when data is loaded
         self.image_recon_btn.setMinimumWidth(150)  # Make button wider to show full text
         hrf_button_layout.addWidget(self.image_recon_btn)
-        
+
+        # Add Brain Parcel Viewer button (needs an image recon result to map onto parcels)
+        self.parcel_viewer_btn = QtWidgets.QPushButton("Brain Parcel Viewer")
+        self.parcel_viewer_btn.clicked.connect(self._launch_parcel_viewer)
+        self.parcel_viewer_btn.setEnabled(False)  # Will be enabled when data is loaded
+        self.parcel_viewer_btn.setMinimumWidth(150)  # Make button wider to show full text
+        hrf_button_layout.addWidget(self.parcel_viewer_btn)
+
         hrf_button_layout.addStretch()
         hrf_main_layout.addLayout(hrf_button_layout)
         
@@ -4801,6 +4808,98 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
             traceback.print_exc()
             self.statbar.showMessage(f"Error launching Plot Probe: {str(e)}")
 
+    def _find_image_recon_dataset(self):
+        """Locate and load the Xs_*.nc image reconstruction result matching the
+        currently selected subject/run (or group average), same file this
+        recording's data would come from for _launch_image_recon.
+
+        Returns (img_data, hrf_est, task_name) on success, or (None, None, msg)
+        with msg an explanation to show in the status bar.
+        """
+        current_subject = self.subj.currentText() if self.subj.currentText() != "None" else None
+        current_run = self.run.currentText() if self.run.currentText() != "None" else None
+
+        task_name = None
+        base_path = None
+        if current_subject and current_run:
+            file_info = self.file_map.get(current_subject, {}).get(current_run, {})
+            pkl_path = None
+            if file_info:
+                pkl_path = (file_info.get('preprocessing_snirfData') or
+                           file_info.get('pkl_path') or
+                           file_info.get('snirf_path'))
+            if pkl_path:
+                task_match = re.search(r'task-([^_/\\]+)', pkl_path)
+                task_name = task_match.group(1) if task_match else None
+                derivatives_match = re.search(r'(.*[/\\]derivatives[/\\]cedalion[/\\][^/\\]+)', pkl_path)
+                if derivatives_match:
+                    base_path = derivatives_match.group(1).replace('\\', '/')
+
+        if not task_name or not base_path:
+            return None, None, "Cannot determine task name or base path. Please load data first."
+
+        image_results_dir = os.path.join(base_path, 'Outputs', 'image_results')
+        if not os.path.exists(image_results_dir):
+            return None, None, f"Image results directory not found: {image_results_dir}"
+
+        import glob
+        if self.hrf_group_avg.isChecked():
+            files = glob.glob(os.path.join(image_results_dir, f"Xs_groupavg_{task_name}_*.nc"))
+            if not files:
+                return None, None, f"No group average image recon found for task {task_name}"
+        else:
+            if not current_subject:
+                return None, None, "No subject selected"
+            subj_dir = os.path.join(image_results_dir, current_subject)
+            files = glob.glob(os.path.join(subj_dir, f"Xs_{current_subject}_{task_name}_*.nc"))
+            if not files:
+                return None, None, f"No image recon found for {current_subject}, task {task_name}"
+
+        img_data = xr.open_dataset(files[0])
+        if 'Xs' in img_data.data_vars:
+            hrf_est = img_data['Xs']
+        elif 'hrf_est' in img_data.data_vars:
+            hrf_est = img_data['hrf_est']
+        elif 'group_average' in img_data.data_vars:
+            hrf_est = img_data['group_average']
+        else:
+            return None, None, (
+                f"Invalid image reconstruction data format. Variables found: "
+                f"{list(img_data.data_vars.keys())}"
+            )
+
+        return img_data, hrf_est, task_name
+
+    def _launch_parcel_viewer(self):
+        """Launch the Brain Parcel Viewer, mapping the current image
+        reconstruction result (Xs_*.nc, vertex-space HRF) onto Schaefer
+        parcels so individual parcels' HRF curves can be inspected."""
+        img_data, hrf_est, msg = self._find_image_recon_dataset()
+        if img_data is None:
+            self.statbar.showMessage(msg)
+            return
+
+        if 'vertex' not in hrf_est.dims:
+            self.statbar.showMessage(
+                "Image reconstruction data is not in vertex space; cannot map to parcels"
+            )
+            return
+
+        head_model = "icbm152"
+        if self.snakemake_config and 'image_recon' in self.snakemake_config:
+            head_model = self.snakemake_config['image_recon'].get('head_model', 'ICBM152').lower()
+
+        try:
+            from parcel_viewer_gui import ParcelData, ParcelViewerWindow
+            data = ParcelData(head_model=head_model)
+            # keep a reference so the window isn't garbage-collected once this returns
+            self.parcel_viewer_window = ParcelViewerWindow(data, hrf_data=hrf_est)
+            self.parcel_viewer_window.show()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.statbar.showMessage(f"Error launching Brain Parcel Viewer: {str(e)}")
+
     def _launch_image_recon(self):
         """Launch the Image Reconstruction viewer with current task data"""
         print("Launching Image Reconstruction...")
@@ -5512,6 +5611,7 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         
         # Enable image recon button if we have data
         self.image_recon_btn.setEnabled(True)
+        self.parcel_viewer_btn.setEnabled(True)
         
         self._init_widgets(redraw_optodes=redraw_optodes)
         
