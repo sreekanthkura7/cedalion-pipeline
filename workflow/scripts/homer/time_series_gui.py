@@ -1844,6 +1844,64 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
 
         return prepared
 
+    @staticmethod
+    def _geo2d_is_valid(geo2d):
+        """A snirf file's stored 2D probe positions are unusable for plotting
+        when the source/detector positions (not landmarks) are missing, all
+        zero/collapsed to one point, or contain NaN/inf. Only S/D-labeled
+        rows are checked: some files carry a valid landmark layout (Nz, Cz,
+        10-5 system points, ...) while every source/detector is [0, 0], which
+        would otherwise look "valid" if the whole array were checked."""
+        if geo2d is None or len(geo2d) == 0:
+            return False
+        labels = geo2d.label.values
+        is_sd = np.array(["S" in str(label) or "D" in str(label) for label in labels])
+        if not is_sd.any():
+            return False
+        try:
+            values = geo2d.pint.dequantify().values
+        except Exception:
+            values = geo2d.values if hasattr(geo2d, "values") else np.asarray(geo2d)
+        values = np.asarray(values, dtype=float)[is_sd]
+        if values.size == 0 or not np.isfinite(values).all():
+            return False
+        if np.allclose(values, 0):
+            return False
+        unique_points = np.unique(values.round(6), axis=0)
+        return len(unique_points) > 1
+
+    def _ensure_valid_geo2d(self, rec):
+        """If rec.geo2d is missing/degenerate, synthesize a 2D circular probe
+        layout from rec.geo3d (mutates rec.geo2d in place) so the probe plot
+        doesn't render garbage. Uses cedalion's own azimuthal cap-style
+        projection (the same one cedalion.vis.anatomy.scalp_plot uses
+        internally), which requires Nz/LPA/RPA landmarks in geo3d."""
+        if self._geo2d_is_valid(getattr(rec, "geo2d", None)):
+            return
+
+        geo3d = getattr(rec, "geo3d", None)
+        if geo3d is None or len(geo3d) == 0:
+            print(
+                "WARNING: 2D probe positions are missing/invalid and no 3D "
+                "positions are available to generate a fallback layout."
+            )
+            return
+
+        try:
+            import cedalion.geometry.registration as registration
+            rec.geo2d = registration.simple_scalp_projection(geo3d)
+            print(
+                "2D probe positions were missing or degenerate; generated a "
+                "circular layout from the 3D optode positions instead."
+            )
+            self.statbar.showMessage(
+                "2D probe positions were invalid - generated a circular layout "
+                "from 3D positions",
+                5000,
+            )
+        except Exception as e:
+            print(f"WARNING: could not synthesize a 2D probe layout from geo3d: {e}")
+
     def _get_recording(self, subj_key, run_key):
         """
         Retrieves a prepared recording, using a cache.
@@ -1912,7 +1970,8 @@ class _MAIN_GUI(QtWidgets.QMainWindow):
         try:
             rec_amp = self._read_snirf_with_lock_fallback(snirf_path)[0]  # read_snirf returns a list, take first element
             print(f"Loaded amplitude data from SNIRF")
-            
+            self._ensure_valid_geo2d(rec_amp)
+
             # Try to load events from TSV file and overwrite stim data
             events_df = self._load_events_from_tsv(snirf_path)
             if events_df is not None:
